@@ -9,20 +9,17 @@ import type { Page } from '@playwright/test';
  * reach a `::before`/`::after` glyph, because a pseudo-element is not an
  * element and owns no text node.
  *
- * IN THIS LAB the control-boundary half is the live one. `src/style.css` has
- * the boundary token — `--control-border`, defined in both themes and applied
- * to `.mono-input`/`.msg-input` and, since the 1.4.11 pass that landed in
- * `9596c01`, to the base `.btn` — but tokens are discarded by overrides, and
- * that is what this oracle exists to measure rather than trust. Three shapes
- * on this page override or bypass it: `.btn-primary` repaints its border the
- * SAME colour as its own accent fill, so it has no edge of its own and lives
- * or dies by fill-vs-surround (which the gold accent does not clear on the
- * white light-theme surface); `.seg-btn` declares `border: none` and leans on
- * its `.seg` wrapper, whose border is the decorative `--border` divider; and
- * `.tab-btn.active` overrides to `--accent-ink`, the fix from that same
- * commit. This oracle judges each control as painted, at every driven state —
- * including the rejected-preset and `aria-invalid` recolourings only the
- * drive reaches.
+ * IN THIS LAB the control-boundary half is the live one. `src/style.css`
+ * defines `--control-border` at 3.59:1 against the page and 3.03:1 against
+ * `--surface-2`, and every text input, number input, select and base `.btn`
+ * draws its edge from it — but a token is only worth what the overrides leave
+ * of it, and that is what this oracle measures rather than trusts. The shapes
+ * on this page that override it are `.btn-primary` (border `--accent-text`
+ * over an `--accent` fill), the selected `.tab-btn` (border and fill both
+ * `--accent`, so it lives or dies by fill-vs-surround), the `.pill` variants,
+ * and inputs recoloured to `--bad` by `aria-invalid`. This oracle judges each
+ * control as painted, at every driven state — including the out-of-range
+ * parameter and non-numeric-N recolourings only the drive reaches.
  *
  * The generated-content half is inert in this repo today — the stylesheet
  * declares no `content` at all; the only generated marks are the `<summary>`
@@ -370,9 +367,9 @@ export async function auditNonText(page: Page, within = 'body *'): Promise<NonTe
     /**
      * Style and geometry are memoised per element for one pass.
      *
-     * A driven pass here walks six tabpanels, and the expensive part is the
-     * BIP-340 vectors panel: nineteen `.kat-item` disclosures, each with a
-     * summary pill and, once opened, five hex fields and a hand-off button —
+     * A driven pass here walks five tabpanels, and the expensive part is the
+     * Ladder: eight inline SVG charts with a numbers disclosure each, beside
+     * the parameters block's ten number inputs and their hints —
      * all siblings re-walking the same ancestors up to `<body>`. Without the
      * caches the pass re-reads the same computed styles and rects tens of
      * thousands of times. Nothing mutates the DOM during the pass, so the

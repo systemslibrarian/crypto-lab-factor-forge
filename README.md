@@ -168,7 +168,7 @@ npm run dev        # http://localhost:5173
 ## Build & Verify
 
 ```bash
-npm test           # 113 unit tests (Vitest)
+npm test           # 112 unit tests (Vitest)
 npm run build      # tsc --noEmit, then vite build
 npm run test:claims  # 20 claims tests, desktop and mobile viewports
 npm run test:a11y  # axe-core WCAG 2.1 A/AA gate, desktop and 380px

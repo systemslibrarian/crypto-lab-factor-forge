@@ -11,25 +11,23 @@
  *
  * `unverified: true` marks an absolutely-positioned pseudo-element. It can paint
  * outside its host and the oracle measures it against the host's backdrop, so
- * that ratio is NOT trustworthy — hand-measure before acting on it.
+ * that ratio is NOT trustworthy -- hand-measure before acting on it.
  *
- * IT IS EMPTY, AND THAT IS THE POINT — this is the terminal state of the
- * ratchet, not an unrun check. The gate's first full drive found six control
- * boundaries under 3:1 and every one was fixed in `src/style.css` rather than
- * listed here: `.btn-primary` and the selected `.seg-btn` each painting their
- * border the SAME colour as their own accent fill (2.39:1 against the light
- * theme's white surface); the unselected `.seg-btn` dissolving into its card
- * entirely (fill 1.00:1, `--border` divider 1.37:1 dark / 1.52:1 light);
- * `.copy-secret` and both preset borders drawn as low-percentage `color-mix()`
- * toward the decorative `--border` (2.19–2.53:1); and the `.tab-btn:hover`
- * fill repainting with no edge at all (1.07–1.19:1). The shared top bar's
- * `.cl-btn`, baselined in older labs at ~1.49:1, already draws its edge from
- * `--cl-ink` here and clears 3:1 — which is why the two entries most of this
- * fleet carries are absent too.
+ * IT IS EMPTY, AND THAT IS THE POINT -- this is the terminal state of the
+ * ratchet, not an unrun check. The palette was chosen against this oracle
+ * rather than fixed up afterwards: `--control-border` (#626d7a) was picked to
+ * clear 3:1 on all three surfaces this page paints controls on (3.59:1 on
+ * `--bg`, 3.28:1 on `--surface`, 3.03:1 on `--surface-2`), `.btn-primary`
+ * borders in `--accent-text` rather than repainting its own fill colour, the
+ * selected `.tab-btn` carries an `--accent` fill that clears its surround, and
+ * the SVG charts draw their axes in `--control-border` instead of
+ * `currentColor` at an opacity. The shared top bar's `.cl-btn`, baselined in
+ * older labs at ~1.49:1, already draws its edge from `--cl-ink` and clears 3:1
+ * -- which is why the two entries most of this fleet carries are absent too.
  *
  * A run with `NT_BASELINE_CAPTURE=1` set prints every finding through this
  * same path and asserts nothing, which is how this file is regenerated; the
- * capture run after those fixes printed zero findings.
+ * capture run for this lab printed zero findings.
  */
 export const NONTEXT_BASELINE: Record<
   string,

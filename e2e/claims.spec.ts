@@ -1,6 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
-import { isqrtCeil } from '../src/factor/bigint';
-import { largestPrimeFactor } from '../src/factor/primality';
+import { isqrt, isqrtCeil, modinv } from '../src/factor/bigint';
+import { factorSmall, largestPrimeFactor } from '../src/factor/primality';
+import { DEFAULT_PARAMS } from '../src/factor/types';
 import { VECTORS } from '../src/factor/vectors';
 
 /**
@@ -13,6 +14,58 @@ import { VECTORS } from '../src/factor/vectors';
  * (p+q)/2 - ceil(sqrt(N)), the smoothness of p-1 by factoring it here — so a
  * page that is consistently wrong still fails.
  */
+
+
+/**
+ * An INDEPENDENT check that a claimed curve order is real.
+ *
+ * The page computes the order with XZ-only Montgomery arithmetic and a walk
+ * along the Hasse interval. Re-deriving it the same way would only prove the
+ * page agrees with itself — and it does: a page reporting the wrong order
+ * factors the wrong order and every self-consistency check still passes. So
+ * this rebuilds the curve from the sigma the page printed and multiplies the
+ * base point by the claimed order using AFFINE arithmetic with an explicit
+ * point at infinity, which shares no formula with the code under test. If the
+ * order is right, [order]P is the identity. If it is off by anything at all,
+ * it is not.
+ *
+ * Curve: B*y^2 = x^3 + A*x^2 + x over F_p, Suyama's parameterisation, with B
+ * chosen so the base point is (x, 1).
+ */
+type Affine = { x: bigint; y: bigint } | null; // null is the point at infinity
+
+function annihilates(sigma: bigint, order: bigint, p: bigint): boolean {
+  const mod = (a: bigint): bigint => ((a % p) + p) % p;
+  const u = mod(sigma * sigma - 5n);
+  const v = mod(4n * sigma);
+  const u3 = mod(u * u * u);
+  const A = mod(mod(mod((v - u) ** 3n) * mod(3n * u + v)) * modinv(mod(4n * u3 * v), p) - 2n);
+  const x = mod(u3 * modinv(mod(v * v * v), p));
+  const B = mod(x * x * x + A * x * x + x);
+
+  const add = (P: Affine, Q: Affine): Affine => {
+    if (P === null) return Q;
+    if (Q === null) return P;
+    if (P.x === Q.x && mod(P.y + Q.y) === 0n) return null;
+    const lambda =
+      P.x === Q.x
+        ? mod(mod(3n * P.x * P.x + 2n * A * P.x + 1n) * modinv(mod(2n * B * P.y), p))
+        : mod(mod(Q.y - P.y) * modinv(mod(Q.x - P.x), p));
+    const x3 = mod(B * lambda * lambda - A - P.x - Q.x);
+    return { x: x3, y: mod(lambda * (P.x - x3) - P.y) };
+  };
+
+  const P0: Affine = { x, y: 1n };
+  let acc: Affine = null;
+  let base: Affine = P0;
+  let k = order;
+  while (k > 0n) {
+    if (k & 1n) acc = add(acc, base);
+    base = add(base, base);
+    k >>= 1n;
+  }
+  return acc === null;
+}
 
 const V = (id: string) => VECTORS.find((v) => v.id === id)!;
 
@@ -203,25 +256,46 @@ test('C5: ECM reports a curve order that satisfies Hasse and factors as shown', 
   expect(orderLine, `no curve order in the trace:\n${body.slice(0, 1200)}`).not.toBeNull();
   const order = BigInt(orderLine![2]);
 
-  // Independent check: Hasse's bound on the recovered factor.
+  // Independent check 1: Hasse's bound on the recovered factor, exactly.
   const p = v.p;
-  const root = BigInt(Math.floor(Math.sqrt(Number(p))));
-  expect(order).toBeGreaterThan(p + 1n - 3n * root);
-  expect(order).toBeLessThan(p + 1n + 3n * root);
+  const root = isqrt(p);
+  expect(order).toBeGreaterThanOrEqual(p + 1n - 2n * root);
+  expect(order).toBeLessThanOrEqual(p + 1n + 2n * root);
 
-  // And the factorization the page printed really multiplies back to it.
+  // Independent check 2, and the one that MATTERS. Rebuild the curve from the
+  // sigma the page printed and multiply the base point by the claimed order
+  // with affine arithmetic that shares no formula with the code under test.
+  const sig = body.match(/sigma\s*\n?\s*(\d+)/);
+  expect(sig, `no sigma printed in the trace:\n${body.slice(0, 1200)}`).not.toBeNull();
+  expect(
+    annihilates(BigInt(sig![1]), order, p),
+    'the reported curve order must actually annihilate the base point over F_p'
+  ).toBe(true);
+
+  // Independent check 3: the order really is smooth, which is the property
+  // ECM's success rests on.
+  const independent = factorSmall(order);
+  expect(independent, 'the reported curve order must itself be factorable').not.toBeNull();
+  const largest = independent!.reduce((acc, f) => (f.prime > acc ? f.prime : acc), 1n);
+  expect(
+    largest,
+    'ECM only succeeds when the curve order is smooth; a wrong order will not be'
+  ).toBeLessThanOrEqual(BigInt(DEFAULT_PARAMS.ecmB2));
+
+  // ...and the page's own factorization must agree with the independent one.
   const fac = body.match(new RegExp(`${order} = ([\\d\\s×^]+)`));
   expect(fac, 'the curve order was shown but not factored').not.toBeNull();
-  const product = fac![1]
+  const printed = fac![1]
     .trim()
     .split('×')
     .map((t) => t.trim())
     .filter(Boolean)
-    .reduce((acc, term) => {
+    .map((term) => {
       const [b, e] = term.split('^');
-      return acc * BigInt(b.trim()) ** BigInt(e ? e.trim() : '1');
-    }, 1n);
-  expect(product).toBe(order);
+      return `${b.trim()}^${e ? e.trim() : '1'}`;
+    })
+    .join(' ');
+  expect(printed).toBe(independent!.map((f) => `${f.prime}^${f.exponent}`).join(' '));
 });
 
 test('C6: the sieve prints an x and y with x^2 = y^2 (mod N) and x != +/- y', async ({ page }) => {

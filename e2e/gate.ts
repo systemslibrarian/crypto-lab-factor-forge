@@ -28,7 +28,7 @@ export const NARROW = { width: 380, height: 800 };
  *
  *  2. IT FORCED EVERY PANEL VISIBLE FROM SCRIPT. The old drive stripped every
  *     `[hidden]` attribute and set every `<details>.open` by JS before its only
- *     scan. Stripping `hidden` puts all six tabpanels on screen AT ONCE — a
+ *     scan. Stripping `hidden` puts all five tabpanels on screen AT ONCE — a
  *     rendering no reader can reach and axe then scans instead of the real one
  *     — and script-opening the disclosures means the SHUT state, which is what
  *     every reader arrives at, was never scanned at all. This gate switches
@@ -38,25 +38,24 @@ export const NARROW = { width: 380, height: 800 };
  *  3. IT DROVE BLIND AND THEN THREW THE STATES AWAY. The old drive clicked
  *     every button whose label matched a regex, swallowed every failure with
  *     `.catch(() => {})`, waited a fixed 120ms per tab, and scanned ONCE at the
- *     end — so the invalid-key rendering, the malformed-hex branch, the
- *     rejected-preset pipeline and the stepper's intermediate reveals were all
+ *     end — so the non-numeric-N rendering, the over-long-N branch, the
+ *     out-of-range parameter and the stepper's intermediate reveals were all
  *     overwritten before anything measured them, and a click that silently did
  *     nothing looked identical to one that worked. This drive names every
  *     control it touches, asserts a real completion signal after each, and
- *     scans after every step, in {dark, light} x {1280, 380}.
+ *     scans after every step, at 1280px and 380px.
  *
  *  4. `violations` IS NOT THE WHOLE ORACLE. See `scan`. The surfaces that carry
  *     this lab's meaning — every `.verdict-*` tone, both `.pill` states, the
- *     `.callout-danger` / `.callout-caveat` warnings, the `.learner-check`
- *     tint and the shared top bar's `color-mix()` ink — are all `color-mix()`
- *     fills axe files under `incomplete` rather than judging. So is an
- *     `aria-label` on a role-less element.
+ *     `.intro` and `.cl-hero-why` accent washes and the shared top bar's ink
+ *     — are `color-mix()` fills axe files under `incomplete` rather than
+ *     judging. So is an `aria-label` on a role-less element.
  *
  *  5. IT HAD NO REFLOW, NON-TEXT-CONTRAST OR GENERATED-CONTENT ORACLE. The old
  *     spec hand-rolled one luminance check over two input selectors, reading
  *     the DECLARED `border-top-color` and `background-color` — blind to
- *     `color-mix()`, to composited backdrops, to every `.btn`, `.seg-btn`,
- *     `.tab-btn` and preset control, and to all states past first paint.
+ *     `color-mix()`, to composited backdrops, to every `.btn`, `.tab-btn`,
+ *     `.pill` and number input, and to all states past first paint.
  *     `nontext.ts` replaces it with a measured oracle over every control at
  *     every driven state, and `expectNoHorizontalOverflow` adds the 1.4.10
  *     check axe has no rule for.
@@ -198,18 +197,15 @@ export async function assertSingleBanner(page: Page): Promise<void> {
 /**
  * List semantics survive their styling.
  *
- * This lab's one list is the Verify Workbench pipeline: `ol.stage-list` styled
- * `list-style: none`, which is exactly the declaration that makes Safari and
- * VoiceOver DROP the list's implicit role. `verifyWorkbench.ts` compensates
- * the documented way — an explicit `role="list"` on the `<ol>` and
- * `role="listitem"` on every `.stage` — so here, unlike most of this fleet, an
- * explicit role on a list is the fix rather than the defect. What is asserted
- * is therefore the SHAPE of that fix: any explicit role on a `ul`/`ol` must be
- * `list` (any other value orphans every `<li>` under it), and a `role="list"`
- * must never sit on an empty element, because axe applies
- * `aria-required-children` to the explicit role and fails it the day the
- * pipeline renders with no stages. Roles can be assigned as JS properties in
- * an element-creation helper, so ask the DOM rather than grepping the source.
+ * This lab's race board is a `<div role="list">` holding seven
+ * `role="listitem"` rows — a list built from divs, which is the shape that
+ * needs the explicit roles to have any semantics at all. What is asserted is
+ * the SHAPE of that: any explicit role on a `ul`/`ol` must be `list` (any
+ * other value orphans every `<li>` under it), and a `role="list"` must never
+ * sit on an empty element, because axe applies `aria-required-children` to the
+ * explicit role and fails it the day the board renders with no rows. Roles are
+ * assigned through `dom.ts`'s element helper rather than written in markup, so
+ * ask the DOM rather than grepping the source.
  */
 export async function assertListSemantics(page: Page): Promise<void> {
   const broken = await page.$$eval('ul[role], ol[role]', (els) =>
@@ -247,10 +243,10 @@ export async function assertListSemantics(page: Page): Promise<void> {
  * scanning dark twice.
  *
  * The defaults are asserted at length because `main.ts` renders each tabpanel
- * lazily on first activation, and the Sign & Verify panel signs a real message
- * at mount. A navigation that resolves proves nothing: a renderer that threw
- * would leave `#panel-sign` empty, and an empty region is exactly what a scan
- * reports as perfectly accessible.
+ * lazily on first activation, and the Factor N panel builds seven board rows
+ * and a shape readout at mount. A navigation that resolves proves nothing: a
+ * renderer that threw would leave `#panel-race` empty, and an empty region is
+ * exactly what a scan reports as perfectly accessible.
  */
 export async function boot(page: Page, theme: 'dark'): Promise<void> {
   // A click on a control that never becomes actionable otherwise burns the
@@ -324,12 +320,13 @@ export async function boot(page: Page, theme: 'dark'): Promise<void> {
  * Assert the page does not require horizontal scrolling.
  *
  * WCAG 1.4.10 (Reflow, AA). axe has no rule for this at all. This lab's long
- * values are 64-byte hex runs — every `.field-value` and `.eq-derivation`
- * relies on `overflow-wrap: anywhere` instead of a scroll region, and the
- * `.sig-pair` grid collapses to one column at 640px — so the shapes at risk
- * are a new unwrapped `<code>` run or a grid item whose automatic minimum size
- * is the min-content of a 128-char line. At 380px that is precisely what this
- * check exists to catch.
+ * values are 40-digit moduli and 90-digit trace intermediates — `.bignum` and
+ * every `.kv dd` rely on `overflow-wrap: anywhere` instead of a scroll region,
+ * the `.race-row` grid collapses to one column at 640px, and the four tables
+ * live inside `.table-scroll` — so the shapes at risk are a new unwrapped
+ * `<code>` run, a grid item whose automatic minimum size is the min-content of
+ * an unbroken digit run, or an SVG chart that does not shrink. At 380px that
+ * is precisely what this check exists to catch.
  */
 export async function expectNoHorizontalOverflow(page: Page, label: string): Promise<void> {
   const overflow = await page.evaluate(() => {
@@ -373,12 +370,12 @@ export async function expectNoHorizontalOverflow(page: Page, label: string): Pro
  * If it holds no focusable content it needs `tabindex="0"`, so it becomes a
  * focus target arrow keys can then scroll.
  *
- * This lab currently avoids scrollers on purpose — long hex wraps via
- * `overflow-wrap: anywhere` — so the assertion is usually vacuous here. It
- * runs at every state anyway, because the requirement MATERIALISES the moment
- * someone reaches for `overflow-x: auto` on a wide value or table (the
- * stylesheet already carries an unused `.table-wrap` rule inviting exactly
- * that), and a scroller born without a keyboard route is invisible to axe.
+ * This lab has four real scrollers: every table is wrapped in
+ * `.table-scroll { overflow-x: auto }` by `dom.ts`'s `table()` helper, which
+ * is also where the `tabindex="0"` + `role="region"` + `aria-label` triple is
+ * applied. So this assertion is load-bearing rather than vacuous — it is what
+ * catches a table built by hand instead of through that helper, and a scroller
+ * born without a keyboard route is invisible to axe.
  */
 export async function expectScrollersReachable(page: Page, label: string): Promise<void> {
   const unreachable = await page.evaluate(() => {
@@ -581,13 +578,13 @@ export function expectBaselineNotStale(): void {
  *    ratios arithmetically — which matters here because the surfaces carrying
  *    this lab's meaning are `color-mix()` fills axe cannot resolve: every
  *    verdict tone, both pill states, the danger/caveat callouts, the
- *    learner-check tint, the hero aside and the shared bar's ink. Everything
+ *    `.intro` panels, the hero aside and the shared bar's ink. Everything
  *    else in that bucket is a real result axe simply could not finish —
  *    including `aria-prohibited-attr`, which is where an `aria-label` on a
- *    role-less element hides. This page leans on getting that right: the
- *    `.seg`, `.radio-row`, `.preset-row` and learner-check option groups all
- *    pair their labels with `role="group"`. Drop any of those roles and the
- *    label is silently discarded.
+ *    role-less element hides. This page leans on getting that right: every
+ *    `.table-scroll` carries `role="region"` with its `aria-label`, and the
+ *    race board carries `role="list"` with one. Drop either role and the label
+ *    is silently discarded.
  *  - arithmetic contrast — composite-aware WCAG 1.4.3 over every text node.
  *  - the same walk over `aria-hidden` content with the exemption lifted —
  *    SC 1.4.3 is about what a reader SEES; see `contrast.ts` for what this
@@ -691,28 +688,28 @@ async function openTab(page: Page, name: RegExp, panelId: string): Promise<void>
  *
  * Five things shape this drive:
  *
- *  - THE ARRIVAL STATE IS SCANNED FIRST, exactly as a reader gets it: Sign &
- *    Verify active and auto-signed, five panels hidden and unrendered, every
- *    disclosure shut. The gate this replaces force-revealed all of it before
- *    its only scan.
+ *  - THE ARRIVAL STATE IS SCANNED FIRST, exactly as a reader gets it: Factor
+ *    N active with seven idle rows on the pinned close-primes vector, four
+ *    panels hidden and unrendered, the parameters disclosure shut. The gate
+ *    this replaces force-revealed all of it before its only scan.
  *
  *  - EVERY PANEL IS RENDERED LAZILY, so a tab that is never clicked is a
- *    panel that is never even IN the DOM. Each of the six is activated
+ *    panel that is never even IN the DOM. Each of the five is activated
  *    through its real tab button and scanned in its own driven states.
  *
  *  - EVERY ERROR AND REJECTION STATE. A malformed private key paints
  *    `aria-invalid` and replaces the signed output with a failure verdict; a
- *    non-hex message does the same through the encoding toggle; the Verify
- *    Workbench's reject presets stop the pipeline at a failing stage; the
- *    attack tab with two identical messages takes its no-recovery branch.
- *    None of these is reachable without typing something wrong on purpose,
- *    and none had ever been scanned.
+ *    over-long N does the same through the digit ceiling; a parameter typed
+ *    outside its range flips `aria-invalid` on a number input; and half the
+ *    board is give-up rows, which is the state this lab is most about.
+ *    None of these is reachable without driving the page on purpose, and
+ *    none had ever been scanned.
  *
  *  - HOVER IS A STATE, AND IT PERSISTS AFTER A CLICK. `:hover` stays on the
  *    element under the pointer after `page.click()` resolves, so it is the
- *    state a reader occupies the instant after pressing Sign — and
- *    `.tab-btn:hover` and `.cl-btn:hover` both repaint their fill. It is
- *    scanned explicitly.
+ *    state a reader occupies the instant after pressing Run — and
+ *    `.tab-btn:hover`, `.btn:hover` and `.cl-btn:hover` all repaint their fill
+ *    or border. Each is scanned explicitly.
  *
  *  - NO FIXED TIMEOUTS. Every wait is on a real DOM completion signal: a
  *    verdict appearing, a pill's wording, a step counter, `aria-selected`.
