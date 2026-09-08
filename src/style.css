@@ -1,0 +1,359 @@
+/* Factor Forge — theme + component styles.
+   Dark is the only theme (:root). The always-dark shared top bar owns its own
+   styles; base element rules here are scoped to #app so they never fight it.
+   Every colour pair below was measured: body text >= 4.5:1, control edges and
+   large text >= 3:1, and state is never carried by colour alone. */
+
+:root {
+  color-scheme: dark;
+  --bg: #0d1117;
+  --surface: #161b22;
+  --surface-2: #1b2230;
+  --border: #2b3440;
+  --control-border: #626d7a; /* 3.59:1 on --bg, 3.03:1 on --surface-2 */
+  --text: #e6edf3;
+  --text-dim: #b3bdc8; /* muted by lightness, never by opacity */
+  --accent: #9f88ff; /* brand accent — also read by the shared header */
+  --accent-ink: #12081f; /* 6.89:1 on an --accent fill */
+  --accent-text: #9f88ff; /* 6.70:1 on --bg, 5.64:1 on --surface-2 */
+  --ok: #4ac26b;
+  --ok-text: #7ee29a;
+  --bad: #f85149;
+  --bad-text: #ff8b84;
+  --alarm: #e8a13c;
+  --alarm-text: #f4bd6a;
+  --info-text: #8fc7ff;
+  --radius: 10px;
+  --mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+html {
+  background-color: var(--bg); /* longhand — axe/WebKit miss the shorthand */
+}
+
+body {
+  margin: 0;
+  background-color: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+  line-height: 1.55;
+}
+
+#app {
+  max-width: 1040px;
+  margin: 0 auto;
+  padding: 0 clamp(0.9rem, 3vw, 2rem) 3rem;
+}
+
+#app a {
+  color: var(--accent-text);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+#app code,
+#app .mono {
+  font-family: var(--mono);
+}
+#app :is(button, input, textarea, select, summary, [tabindex]):focus-visible {
+  outline: 2px solid var(--accent-text);
+  outline-offset: 2px;
+}
+#app h2 {
+  font-size: 1.25rem;
+  margin: 0 0 0.4rem;
+}
+#app h3 {
+  font-size: 1.02rem;
+  margin: 1.2rem 0 0.4rem;
+}
+#app p {
+  margin: 0.5rem 0;
+}
+
+/* ---------- hero ---------- */
+.cl-hero{display:flex;align-items:flex-start;justify-content:space-between;gap:clamp(1rem,4vw,3rem);flex-wrap:wrap;margin:clamp(1rem,3vw,2rem) 0 1.5rem;}
+.cl-hero-main{flex:1 1 22rem;min-width:min(100%,20rem);}
+.cl-hero-title{margin:0;font-size:clamp(1.6rem,3.8vw,2.7rem);font-weight:700;line-height:1.1;letter-spacing:.01em;}
+.cl-hero-sub{margin:.4rem 0 0;font-size:clamp(.9rem,1.6vw,1.05rem);letter-spacing:.01em;color:var(--accent-text);}
+.cl-hero-desc{margin:.55rem 0 0;font-size:1rem;line-height:1.5;color:var(--text-dim);max-width:60ch;}
+.cl-hero-why{flex:0 1 min(40%,26rem);min-width:min(100%,15rem);box-sizing:border-box;border:1px solid var(--border);border-radius:10px;padding:.85rem 1.05rem;background:color-mix(in oklab,var(--accent) 8%,var(--bg));}
+.cl-hero-why-label{display:block;font-size:.68rem;font-weight:700;letter-spacing:.14em;color:var(--accent-text);}
+.cl-hero-why-text{margin:.35rem 0 0;font-size:.95rem;line-height:1.5;}
+@media (max-width:640px){.cl-hero{flex-direction:column;}.cl-hero-why{flex-basis:auto;width:100%;}.cl-hero-main{min-width:0;flex-basis:auto;}}
+
+/* ---------- tabs ---------- */
+.tabs { margin: 0.5rem 0 1.25rem; }
+.tab-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 0.5rem;
+}
+.tab-btn {
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-dim);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  padding: 0.45rem 0.8rem;
+  cursor: pointer;
+}
+/* The hover fill needs an edge of its own: --surface-2 alone is about 1.2:1
+   against the page, which is not a visible boundary (WCAG 1.4.11). */
+.tab-btn:hover { background: var(--surface-2); border-color: var(--control-border); color: var(--text); }
+.tab-btn[aria-selected="true"] {
+  color: var(--accent-ink);
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+/* ---------- cards / layout ---------- */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1rem 1.1rem;
+  margin: 1rem 0;
+}
+.card-tight { padding: 0.75rem 0.9rem; }
+.intro {
+  background: color-mix(in oklab, var(--accent) 8%, var(--bg));
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--accent);
+  border-radius: var(--radius);
+  padding: 0.9rem 1.1rem;
+  margin: 1rem 0 1.25rem;
+}
+.intro h2 { margin-top: 0; }
+.grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr)); gap: 1rem; }
+.row { display: flex; flex-wrap: wrap; gap: 0.6rem; align-items: center; }
+.muted { color: var(--text-dim); }
+.small { font-size: 0.85rem; }
+
+/* ---------- controls ---------- */
+.btn {
+  font: inherit;
+  font-size: 0.88rem;
+  font-weight: 600;
+  padding: 0.5rem 0.9rem;
+  border-radius: var(--radius);
+  border: 1px solid var(--control-border);
+  background: var(--surface-2);
+  color: var(--text);
+  cursor: pointer;
+}
+.btn:hover { border-color: var(--accent-text); }
+.btn:disabled { color: var(--text-dim); border-color: var(--border); cursor: not-allowed; }
+.btn-primary {
+  background: var(--accent);
+  color: var(--accent-ink);
+  border-color: var(--accent-text);
+}
+.btn-primary:hover { border-color: var(--text); }
+.btn-primary:disabled { background: var(--surface-2); color: var(--text-dim); border-color: var(--border); }
+
+label { font-size: 0.85rem; font-weight: 600; color: var(--text-dim); display: block; margin-bottom: 0.25rem; }
+input[type="text"], input[type="number"], textarea, select {
+  font-family: var(--mono);
+  font-size: 0.9rem;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.5rem 0.6rem;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--control-border);
+  border-radius: 8px;
+}
+select {
+  appearance: none;
+  background-image: linear-gradient(45deg, transparent 50%, var(--text-dim) 50%),
+    linear-gradient(135deg, var(--text-dim) 50%, transparent 50%);
+  background-position: calc(100% - 18px) 52%, calc(100% - 13px) 52%;
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+  padding-right: 2rem;
+  font-family: var(--sans);
+}
+textarea { resize: vertical; min-height: 3.4rem; overflow-wrap: anywhere; }
+input[aria-invalid="true"], textarea[aria-invalid="true"] { border-color: var(--bad); }
+.field { margin: 0.6rem 0; }
+.field-inline { flex: 1 1 12rem; }
+
+/* ---------- verdicts: icon + text + colour, never colour alone ---------- */
+.verdict {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  padding: 0.5rem 0.7rem;
+  font-weight: 600;
+  font-size: 0.92rem;
+  background: var(--surface-2);
+}
+.verdict-icon { font-family: var(--mono); font-weight: 700; }
+.verdict-pass { border-color: var(--ok); color: var(--ok-text); }
+.verdict-fail { border-color: var(--bad); color: var(--bad-text); }
+.verdict-alarm { border-color: var(--alarm); color: var(--alarm-text); }
+.verdict-idle { border-color: var(--control-border); color: var(--text-dim); }
+
+/* ---------- the race board ---------- */
+.board { display: grid; gap: 0.6rem; margin-top: 0.8rem; }
+.race-row {
+  display: grid;
+  grid-template-columns: minmax(9rem, 1.1fr) minmax(10rem, 2fr) auto;
+  gap: 0.7rem;
+  align-items: center;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--control-border);
+  border-radius: 8px;
+  padding: 0.6rem 0.8rem;
+}
+.race-row[data-state="pass"] { border-left-color: var(--ok); }
+.race-row[data-state="fail"] { border-left-color: var(--bad); }
+.race-row[data-state="alarm"] { border-left-color: var(--alarm); }
+.race-name { font-weight: 700; font-size: 0.92rem; }
+.race-exploits { color: var(--text-dim); font-size: 0.8rem; display: block; font-weight: 400; }
+.race-status { font-size: 0.86rem; overflow-wrap: anywhere; }
+.race-time { font-family: var(--mono); font-size: 0.82rem; color: var(--text-dim); white-space: nowrap; }
+.race-actions { display: flex; gap: 0.35rem; }
+@media (max-width: 640px) {
+  .race-row { grid-template-columns: 1fr; }
+}
+
+.retired-note {
+  border: 1px dashed var(--control-border);
+  border-radius: 8px;
+  padding: 0.45rem 0.7rem;
+  color: var(--text-dim);
+}
+
+/* ---------- key/value readouts ---------- */
+.kv { display: grid; grid-template-columns: minmax(8rem, auto) 1fr; gap: 0.2rem 0.8rem; margin: 0.5rem 0; font-size: 0.86rem; }
+.kv dt { color: var(--text-dim); }
+.kv dd { margin: 0; font-family: var(--mono); overflow-wrap: anywhere; }
+
+.bignum {
+  font-family: var(--mono);
+  font-size: 0.88rem;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.5rem 0.6rem;
+  overflow-wrap: anywhere;
+}
+
+/* ---------- the trace stepper ---------- */
+.step-progress { font-family: var(--mono); font-size: 0.85rem; color: var(--text-dim); }
+.trace-step {
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--control-border);
+  border-radius: 8px;
+  padding: 0.6rem 0.8rem;
+  margin: 0.5rem 0;
+  background: var(--surface-2);
+}
+.trace-step[data-pivotal="true"] { border-left-color: var(--accent); }
+.trace-label { font-weight: 700; font-size: 0.92rem; }
+.trace-detail { font-size: 0.88rem; margin: 0.3rem 0 0; }
+
+/* ---------- tables ---------- */
+.table-scroll {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+table { border-collapse: collapse; width: 100%; font-size: 0.85rem; }
+th, td { text-align: left; padding: 0.45rem 0.6rem; border-bottom: 1px solid var(--border); vertical-align: top; }
+th { color: var(--text-dim); font-weight: 700; white-space: nowrap; }
+tbody tr:last-child td { border-bottom: none; }
+
+/* ---------- the ladder chart ---------- */
+.ladder-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr)); gap: 0.9rem; }
+.ladder-card {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.7rem 0.8rem;
+}
+.ladder-card h3 { margin: 0 0 0.15rem; font-size: 0.95rem; }
+.ladder-axis { font-size: 0.78rem; color: var(--text-dim); margin: 0 0 0.4rem; }
+.ladder-card svg { width: 100%; height: auto; display: block; }
+.ladder-note { font-size: 0.78rem; color: var(--text-dim); margin: 0.35rem 0 0; }
+
+/* ---------- pills / badges ---------- */
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.76rem;
+  font-weight: 700;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid var(--control-border);
+  color: var(--text-dim);
+}
+.pill-ok { border-color: var(--ok); color: var(--ok-text); }
+.pill-bad { border-color: var(--bad); color: var(--bad-text); }
+.pill-accent { border-color: var(--accent-text); color: var(--accent-text); }
+
+/* ---------- disclosures ---------- */
+details {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.5rem 0.7rem;
+  margin: 0.7rem 0;
+  background: var(--surface-2);
+}
+summary { cursor: pointer; font-weight: 600; font-size: 0.9rem; }
+details[open] summary { margin-bottom: 0.4rem; }
+
+.negative-claim-text {
+  border-left: 3px solid var(--alarm);
+  background: var(--surface-2);
+  border-radius: 0 8px 8px 0;
+  padding: 0.55rem 0.8rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--alarm-text);
+}
+
+/* ---------- honesty notes ---------- */
+.note {
+  border-left: 3px solid var(--alarm);
+  background: var(--surface-2);
+  border-radius: 0 8px 8px 0;
+  padding: 0.55rem 0.8rem;
+  margin: 0.8rem 0;
+  font-size: 0.87rem;
+}
+.note strong { color: var(--alarm-text); }
+
+.progress {
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  color: var(--text-dim);
+}
+
+/* ---------- footer ---------- */
+.scripture-footer {
+  margin-top: 2.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+  color: var(--text-dim);
+  font-size: 0.85rem;
+  text-align: center;
+}
+.footer-links { overflow-wrap: anywhere; }
+
+/* Motion is tied to an action; there is no idle animation anywhere. This block
+   still exists so the one transition that does run is cancelled for readers who
+   ask for reduced motion. */
+@media (prefers-reduced-motion: reduce) {
+  * { transition-duration: 0.001ms !important; animation-duration: 0.001ms !important; }
+}

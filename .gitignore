@@ -1,0 +1,10 @@
+node_modules
+dist
+.DS_Store
+*.local
+playwright-report
+test-results
+
+# The fleet spec document, dropped in here to build against. It belongs to the
+# catalog repo, not to this lab.
+CRYPTO-LAB-TEMPLATE*.md
