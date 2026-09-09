@@ -99,7 +99,7 @@ const MODELS: Record<AlgorithmId, LadderModel> = {
   },
   pminus1: {
     xLabel: 'bits of the largest prime factor of p - 1',
-    yLabel: 'prime powers processed',
+    yLabel: 'prime powers',
     xs: range(4, 30, 2),
     f: (bits) => {
       // To catch a b-bit prime the bound must reach 2^b, and stage 1 processes
@@ -115,7 +115,7 @@ const MODELS: Record<AlgorithmId, LadderModel> = {
     },
   },
   pplus1: {
-    xLabel: 'bits of the largest prime factor of p + 1 (or p - 1, whichever group caught it)',
+    xLabel: 'bits of the largest prime of p ± 1',
     yLabel: 'Lucas ladder steps',
     xs: range(4, 30, 2),
     f: (bits) => {
@@ -144,7 +144,7 @@ const MODELS: Record<AlgorithmId, LadderModel> = {
   },
   qs: {
     xLabel: 'bits of N',
-    yLabel: 'relation-sieve operations',
+    yLabel: 'sieve operations',
     xs: range(40, 400, 10),
     f: (bits) => {
       const lnN = bits * Math.LN2;
@@ -281,8 +281,13 @@ export function mountLadderPanel(root: HTMLElement): () => void {
         xLabel: 'bits of N',
         yLabel: 'operations',
         description: `${names.length} cost curves against the size of N (${names.join(', ')}): the quadratic sieve and the number field sieve both climb steeply and off the top of the chart, while Shor stays a shallow cubic line near the bottom.`,
-        width: 640,
-        height: 260,
+        // 400, not 640. The viewBox width sets how far the labels are scaled
+        // down when the chart is squeezed into a phone: at 640 this chart's
+        // text rendered at 4.8 CSS px on a 320px viewport, half the size of the
+        // per-driver charts beside it, because it had to shrink almost twice as
+        // hard to fit the same box.
+        width: 400,
+        height: 240,
       })
     );
     // The against-N chart gets the same numbers-disclosure association the seven

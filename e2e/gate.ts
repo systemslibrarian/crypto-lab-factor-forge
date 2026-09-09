@@ -696,6 +696,11 @@ export async function scan(page: Page, label: string): Promise<void> {
       'landmark-unique',
       'landmark-one-main',
       'landmark-complementary-is-top-level',
+      // `region` was missing, and its absence hid a real gap: the hero's title
+      // block sat outside every landmark, so a reader navigating by landmark
+      // skipped the page's own name and description. Best-practice rather than
+      // WCAG-tagged, which is exactly why `withTags` never reaches it.
+      'region',
     ])
     .analyze();
   const results = {

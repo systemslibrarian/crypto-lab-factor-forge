@@ -10,7 +10,7 @@
 import { algorithmMeta } from '../factor/types';
 import { WEAKNESSES, type WeaknessTarget } from '../gen/weak';
 import { verifyFactorization } from '../verify/verify';
-import { clear, el, groupDigits, isDisabled, kv, setDisabled, table, verdict } from './dom';
+import { announce, clear, el, groupDigits, isDisabled, kv, setDisabled, table, verdict } from './dom';
 import type { Runner } from './runner';
 import { emit, freshSeed, setN, state } from './state';
 
@@ -90,6 +90,13 @@ export function mountForgePanel(root: HTMLElement, runner: Runner): () => void {
       input.value = state.lastGenerated.n;
       input.dispatchEvent(new Event('input', { bubbles: true }));
     }
+    // This button deliberately moves the reader to another tab, and the control
+    // they were standing on is now inside a hidden panel -- so focus had nowhere
+    // to go and fell to <body> (SC 2.4.3). `preserveFocus` cannot help: the
+    // element is gone on purpose. Send focus where the reader was sent, which is
+    // the newly selected tab, so the next Tab continues from the right place.
+    tab?.focus();
+    announce('Sent to the race board. The Factor N tab is now open with that modulus loaded.');
   });
 
   return () => {

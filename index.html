@@ -154,8 +154,23 @@
     else dedupeBanner();
   })();
 </script>
+    <!-- The announcer ships in the initial HTML rather than being created on
+         first use. A live region has to be present in the accessibility tree
+         BEFORE its content changes, or the first change is simply missed --
+         which would have meant the first run a reader triggered was the one
+         announcement they never heard. -->
+    <div id="announcer" class="visually-hidden" role="status" aria-live="polite" aria-atomic="true"></div>
+
     <div id="app" tabindex="-1">
-      <div class="cl-hero">
+      <!-- The hero is the page's own content header. Without a landmark role its
+           title block sat outside every landmark, so a reader navigating by
+           landmark skipped straight past the page's name and description.
+           `region` with a name, not `banner`: the shared top bar is the banner
+           and a second one would be a duplicate-landmark failure. Not a
+           <header> either -- the shared bar's dedupe script demotes any
+           top-level <header> to role="group", which is not a landmark at all
+           and is exactly the state this is fixing. -->
+      <div class="cl-hero" role="region" aria-label="About this lab">
         <div class="cl-hero-main">
           <h1 class="cl-hero-title">Factor Forge</h1>
           <p class="cl-hero-sub">Classical integer factorization · Pollard → ECM → QS</p>
@@ -165,14 +180,21 @@
             narrow <code>|p − q|</code>, a smooth <code>p ± 1</code>, a lucky curve, or nothing at all.
           </p>
         </div>
-        <aside class="cl-hero-why" aria-label="Why it matters">
+        <!-- A labelled group, not an <aside>. `aside` maps to the complementary
+             LANDMARK, and a complementary nested inside another landmark is a
+             defect in its own right (axe: landmark-complementary-is-top-level).
+             It is also the wrong semantic: "why it matters" is not tangential
+             to the page, it is half of the page's own introduction. `group`
+             keeps the label exposed -- an aria-label on a role-less div is
+             silently discarded -- without inventing a second landmark. -->
+        <div class="cl-hero-why" role="group" aria-label="Why it matters">
           <span class="cl-hero-why-label">WHY IT MATTERS</span>
           <p class="cl-hero-why-text">
             There is no single "factoring algorithm" — there is a family of them, each waiting for a
             different mistake. Every rule in RSA key generation exists to close one of these doors.
             Shor closes none of them, because it needs no door.
           </p>
-        </aside>
+        </div>
       </div>
 
       <nav class="tabs" aria-label="Exhibits">

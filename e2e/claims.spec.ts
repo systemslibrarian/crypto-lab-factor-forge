@@ -645,7 +645,9 @@ test('the ladder never plots a factor-driven method against the size of N', asyn
   expect(await byName('Lenstra ECM')).toContain('SMALLEST factor');
   expect(await byName('Fermat')).toContain('|p - q|');
   expect(await byName('Pollard p-1')).toContain('p - 1');
-  expect(await byName('Williams p+1')).toContain('p + 1');
+  // "p ± 1", because which group caught it is decided by a computed Legendre
+  // symbol at run time, not assumed -- see pplus1.ts.
+  expect(await byName('Williams p+1')).toContain('p ± 1');
   expect(await byName('Quadratic sieve')).toContain('bits of N');
   // Only the methods that genuinely depend on N share the against-N chart.
   await expect(page.locator('.card', { hasText: 'The only fair' })).toContainText('Shor');
@@ -774,4 +776,103 @@ test('the viewport meta does not block zooming', async ({ page }) => {
   expect(content).toContain('width=device-width');
   expect(content).not.toContain('user-scalable=no');
   expect(content).not.toMatch(/maximum-scale\s*=\s*[12](\.0)?\b/);
+});
+
+/**
+ * WCAG 2.1 SC 4.1.3 Status Messages (Level AA).
+ *
+ * A run's verdict is the entire product of this page and it was delivered
+ * silently. Measured before the fix: a seven-run batch produced 8,508 DOM
+ * mutations inside `#board` and ZERO inside any live region, because `#board`
+ * is `role="list"` and nothing else on the page was live. A screen-reader user
+ * pressing Run heard nothing -- not that it started, not that it finished, not
+ * what it found.
+ */
+test('every terminal run state is announced, and progress is not', async ({ page }) => {
+  const announcer = page.locator('#announcer');
+  await expect(announcer).toHaveAttribute('role', 'status');
+  await expect(announcer).toHaveAttribute('aria-live', 'polite');
+  await expect(announcer).toHaveAttribute('aria-atomic', 'true');
+
+  // A win names the method, the timing and the recovered factors.
+  await setN(page, V('smooth-pminus1').n);
+  await run(page, 'pminus1');
+  await expect(announcer).toContainText('Pollard p-1 factored it');
+  const text = await announcer.innerText();
+  const m = text.match(/p is (\d+), q is (\d+)/);
+  expect(m, `no factors announced: ${text}`).not.toBeNull();
+  expect(BigInt(m![1]) * BigInt(m![2])).toBe(V('smooth-pminus1').n);
+
+  // A give-up is announced too -- on this page that is a result, not a silence.
+  await run(page, 'trial');
+  await expect(announcer).toContainText('Trial division gave up');
+
+  // Progress is deliberately NOT announced: a long rho run emits thousands of
+  // updates and piping those into a live region replaces silence with a flood.
+  await page.locator('details.params > summary').click();
+  await page.locator('#p-rho').fill('50000000');
+  await page.locator('#p-rho').blur();
+  await page.locator('#p-cap').fill('120000');
+  await page.locator('#p-cap').blur();
+  await setN(page, 168087653461343538520835907316479739447n);
+  await rowFor(page, 'rho').getByRole('button', { name: /^Run/ }).click();
+  await expect(rowFor(page, 'rho')).toHaveAttribute('data-state', 'busy', { timeout: 60_000 });
+  const during = await announcer.innerText();
+  await page.waitForTimeout(1500);
+  await expect(rowFor(page, 'rho').locator('.progress')).toContainText('%');
+  expect(await announcer.innerText(), 'progress must not be announced').toBe(during);
+
+  // Cancellation IS announced.
+  await page.locator('#cancel').click();
+  await expect(announcer).toContainText('cancelled');
+});
+
+test('a batch announces its start and a summary of what won', async ({ page }) => {
+  await setN(page, V('qs-target').n);
+  await page.getByRole('button', { name: /Run all seven/ }).click();
+  const announcer = page.locator('#announcer');
+  await expect(announcer).toContainText('finished', { timeout: 180_000 });
+  const text = await announcer.innerText();
+  const m = text.match(/(\d+) factored this N: (.+)\./);
+  expect(m, `no batch summary: ${text}`).not.toBeNull();
+  // The summary must agree with the board rather than being written separately.
+  const passes = await page.locator('.race-row[data-state="pass"]').count();
+  expect(Number(m![1])).toBe(passes);
+});
+
+test('retiring the board is announced, not just repainted', async ({ page }) => {
+  await setN(page, V('smooth-pminus1').n);
+  await run(page, 'pminus1');
+  await setN(page, V('qs-target').n);
+  await expect(page.locator('#announcer')).toContainText('were discarded');
+  await expect(page.locator('#announcer')).toContainText(String(V('smooth-pminus1').n));
+});
+
+/** The one field this lab is built around takes digits only. */
+test('the N field asks a phone for a numeric keyboard', async ({ page }) => {
+  await expect(page.locator('#n-input')).toHaveAttribute('inputmode', 'numeric');
+});
+
+/**
+ * Landmark navigation is a real screen-reader workflow, and the page's own name
+ * and description sat outside every landmark.
+ */
+test('all content is inside a landmark, with exactly one banner and one main', async ({ page }) => {
+  const landmarks = await page.evaluate(() => {
+    const sel = 'header,[role=banner],main,[role=main],nav,[role=navigation],aside,[role=complementary],[role=region][aria-label],footer,[role=contentinfo]';
+    return [...document.querySelectorAll(sel)].map(
+      (e) => `${e.tagName.toLowerCase()}[${e.getAttribute('role') ?? 'implicit'}]="${e.getAttribute('aria-label') ?? ''}"`
+    );
+  });
+  expect(landmarks.filter((l) => l.includes('banner')).length).toBe(1);
+  expect(landmarks.filter((l) => l.startsWith('main')).length).toBe(1);
+  // The hero carries the h1 and must be reachable by landmark navigation.
+  expect(landmarks.some((l) => l.includes('About this lab'))).toBe(true);
+  // ...and no complementary nested inside another landmark.
+  const nested = await page.evaluate(() =>
+    [...document.querySelectorAll('aside,[role=complementary]')].filter((e) =>
+      e.parentElement?.closest('main,[role=main],[role=region],nav,header,[role=banner],footer,[role=contentinfo]')
+    ).length
+  );
+  expect(nested).toBe(0);
 });

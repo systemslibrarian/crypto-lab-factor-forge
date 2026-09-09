@@ -13,7 +13,7 @@ import { VECTORS } from '../factor/vectors';
 import { describeShape } from '../verify/verify';
 import { treeLeaves, type TreeNode } from '../factor/tree';
 import { isProbablePrime } from '../factor/primality';
-import { clear, el, groupDigits, isDisabled, setDisabled, table, verdict } from './dom';
+import { announce, clear, el, groupDigits, isDisabled, setDisabled, table, verdict } from './dom';
 import { exportRun, permalinkFor } from './provenance';
 import { paramsCard } from './params';
 import type { Runner } from './runner';
@@ -94,6 +94,13 @@ export function mountRacePanel(root: HTMLElement, runner: Runner): () => void {
     id: 'n-input',
     rows: '2',
     spellcheck: 'false',
+    // A phone raised a full QWERTY keyboard for a field that accepts digits and
+    // nothing else -- every other control on the page is input[type=number] and
+    // gets a keypad, so the one field this lab is built around was the only one
+    // that did not. `numeric` rather than `tel`: no separators, no plus sign.
+    inputmode: 'numeric',
+    autocapitalize: 'off',
+    autocorrect: 'off',
     'aria-describedby': 'n-help',
   }) as HTMLTextAreaElement;
   nInput.value = String(state.n);
@@ -188,11 +195,13 @@ export function mountRacePanel(root: HTMLElement, runner: Runner): () => void {
     if (!v) return;
     nInput.value = String(v.n);
     applyN(nInput, shapeBox);
+    announceRetirement();
   });
 
   nInput.addEventListener('input', () => {
     preset.value = '';
     applyN(nInput, shapeBox);
+    announceRetirement();
   });
 
   runAll.addEventListener('click', () => {
@@ -481,6 +490,22 @@ function raceRow(id: AlgorithmId, runner: Runner): HTMLElement {
  *  - nothing checked that the leaves were prime, so a partial factorization
  *    could be presented as a complete one.
  */
+/**
+ * The retirement note is appended inside `#board`, which is `role="list"` and
+ * announces nothing -- so results vanishing from under the reader was invisible
+ * to anyone not watching the screen. Announced here instead of giving `#board`
+ * a live region, because making a list of seven rows live would re-read the
+ * whole board on every single state change.
+ */
+function announceRetirement(): void {
+  const r = state.retired;
+  if (!r) return;
+  const parts: string[] = [];
+  if (r.completed) parts.push(`${r.completed} completed verdict or verdicts`);
+  if (r.cancelled) parts.push(`${r.cancelled} run or runs still in flight`);
+  announce(`The experiment changed, so ${parts.join(' and ')} for ${r.from} were discarded.`);
+}
+
 async function runTree(runner: Runner, btn: HTMLElement, out: HTMLElement): Promise<void> {
   setDisabled(btn, true);
   clear(out);
@@ -592,12 +617,35 @@ export async function runOne(runner: Runner, id: AlgorithmId): Promise<void> {
     if (node) node.textContent = text;
   });
 
+  const name = algorithmMeta(id).name;
   if (res.ok) {
-    recordRun(res.outcome, ctx);
+    const rec = recordRun(res.outcome, ctx);
+    // SC 4.1.3: the verdict is the product of this page, and it was silent.
+    // Announced from the VERIFIER's verdict, not from what the algorithm said
+    // about itself -- the same rule the board's colour follows (invariant I1).
+    if (!rec) {
+      announce(`${name}: discarded, because N changed while it was running.`);
+    } else if (rec.verdict.status === 'verified' && rec.verdict.fullyFactored) {
+      announce(
+        `${name} factored it in ${res.outcome.ms.toFixed(0)} milliseconds. p is ${res.outcome.p}, q is ${res.outcome.q}. ${whySentence(res.outcome.trace)}`
+      );
+    } else if (rec.verdict.status === 'refuted') {
+      announce(`${name}: refuted by the verifier. ${rec.verdict.reason}`);
+    } else if (rec.verdict.status === 'verified') {
+      announce(`${name}: partial split only. ${rec.verdict.reason}`);
+    } else {
+      const g = res.outcome.trace.gaveUp;
+      announce(`${name} gave up after ${res.outcome.ms.toFixed(0)} milliseconds. ${g ? g.reason : 'No factor found.'}`);
+    }
     return;
   }
-  if (res.kind === 'cancelled') markCancelled(ctx, 'cancelled by you');
-  else markError(ctx, res.message);
+  if (res.kind === 'cancelled') {
+    markCancelled(ctx, 'cancelled by you');
+    announce(`${name}: cancelled. No result is reported.`);
+  } else {
+    markError(ctx, res.message);
+    announce(`${name}: execution error. ${res.message}. Nothing is claimed about N.`);
+  }
 }
 
 /**
@@ -613,10 +661,28 @@ export async function runOne(runner: Runner, id: AlgorithmId): Promise<void> {
 async function runAllSequentially(runner: Runner): Promise<void> {
   const batch = startBatch();
   emit();
+  announce(`Running all ${ALGORITHM_ORDER.length} methods, one at a time.`);
+  let completed = 0;
   for (const id of ALGORITHM_ORDER) {
     if (!batchIsCurrent(batch)) break;
     await runOne(runner, id);
+    completed++;
     if (!batchIsCurrent(batch)) break;
   }
   emit();
+  // One summary at the end, rather than leaving the reader to work out from
+  // seven separate announcements whether the batch is still going.
+  if (batchIsCurrent(batch)) {
+    const won = ALGORITHM_ORDER.filter((id) => {
+      const row = rowOf(id);
+      return row.kind === 'done' && row.record.verdict.status === 'verified' && row.record.verdict.fullyFactored;
+    });
+    announce(
+      won.length === 0
+        ? `All ${completed} methods finished. None of them factored this N.`
+        : `All ${completed} methods finished. ${won.length} factored this N: ${won.map((id) => algorithmMeta(id).name).join(', ')}.`
+    );
+  } else {
+    announce(`Cancelled after ${completed} of ${ALGORITHM_ORDER.length} methods.`);
+  }
 }

@@ -137,3 +137,58 @@ export function setDisabled(el: HTMLElement, disabled: boolean): void {
 export function isDisabled(el: HTMLElement): boolean {
   return el.getAttribute('aria-disabled') === 'true';
 }
+
+/**
+ * The page's announcer (WCAG 2.1 SC 4.1.3 Status Messages, Level AA).
+ *
+ * A run's verdict is the entire product of this page, and it was delivered
+ * silently: measured, a seven-run batch produced 8,508 DOM mutations inside
+ * `#board` and ZERO inside any live region. `#board` carries `role="list"`, not
+ * `role="status"`, so a screen-reader user pressing Run heard nothing at all --
+ * not when it started, not when it finished, not what it found. Sighted readers
+ * got the whole lesson; everyone else got silence.
+ *
+ * Deliberately NOT wired to progress. A long rho run emits thousands of progress
+ * updates, and piping those into a live region would replace silence with a
+ * flood, which is its own defect -- the criterion asks for status messages, not
+ * for narration. Only terminal states are announced, plus one summary when a
+ * batch finishes.
+ *
+ * `aria-atomic` so the whole sentence is read rather than the diff, and the text
+ * is cleared first: two identical consecutive messages are otherwise dropped as
+ * "no change", which is exactly what happens when the same method is run twice.
+ */
+let announcer: HTMLElement | null = null;
+
+function announcerEl(): HTMLElement {
+  if (announcer) return announcer;
+  const found = document.getElementById('announcer');
+  if (found) {
+    announcer = found;
+    return found;
+  }
+  // index.html ships the region so it is in the accessibility tree from first
+  // paint. This fallback exists for the unit tests, which have no document of
+  // their own, and is deliberately not the normal path -- a live region created
+  // at the same moment as its first message is a region whose first message is
+  // missed.
+  const node = el('div', {
+    id: 'announcer',
+    class: 'visually-hidden',
+    role: 'status',
+    'aria-live': 'polite',
+    'aria-atomic': 'true',
+  });
+  document.body.append(node);
+  announcer = node;
+  return node;
+}
+
+export function announce(message: string): void {
+  const node = announcerEl();
+  node.textContent = '';
+  // A frame apart, so a repeat of the same sentence is seen as a change.
+  requestAnimationFrame(() => {
+    node.textContent = message;
+  });
+}

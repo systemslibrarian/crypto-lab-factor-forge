@@ -91,6 +91,29 @@ function svgEl(tag: string, attrs: Record<string, string>): SVGElement {
   return node;
 }
 
+/**
+ * Keep `--k` on the chart equal to viewBoxWidth / renderedWidth, so a label
+ * sized `calc(var(--k) * 11px)` in user units lands at 11 CSS pixels no matter
+ * how the chart has been scaled. Without it the same label rendered at 7 px on
+ * a phone and 28 px on a desktop.
+ *
+ * ResizeObserver rather than a resize listener: the ladder is a grid, so a chart
+ * can change width without the window doing anything -- opening a disclosure
+ * above it is enough.
+ */
+function keepLegible(svg: SVGElement, viewBoxWidth: number): void {
+  const apply = (): void => {
+    const w = svg.getBoundingClientRect().width;
+    svg.style.setProperty('--k', String(w > 0 ? viewBoxWidth / w : 1));
+  };
+  if (typeof ResizeObserver === 'undefined') {
+    apply();
+    return;
+  }
+  new ResizeObserver(apply).observe(svg);
+  apply();
+}
+
 export function logChart(series: Series[], opts: ChartOptions): SVGElement {
   const W = opts.width ?? 320;
   // The legend is added ABOVE the plot rather than inside it: squeezing the
@@ -99,8 +122,6 @@ export function logChart(series: Series[], opts: ChartOptions): SVGElement {
   // constant across the narrow per-driver charts and the wide against-N one.
   const scale = (opts.width ?? 320) / 320;
   const LEGEND_ROW = LEGEND_ROW_AT_320 * scale;
-  const legendFont = 9 * scale;
-  const axisFont = 9 * scale;
   const legendH = series.length * LEGEND_ROW;
   const H = (opts.height ?? 170) + legendH;
   const padL = 40;
@@ -120,6 +141,30 @@ export function logChart(series: Series[], opts: ChartOptions): SVGElement {
   const sx = (x: number): number => padL + ((x - xMin) / (xMax - xMin || 1)) * (W - padL - padR);
   const sy = (y: number): number =>
     H - padB - ((Math.log10(Math.max(y, 1e-9)) - yMin) / ySpan) * (H - padT - padB);
+
+  // Text in an SVG scales with the viewBox, so a font-size fixed in user units
+  // renders at a DIFFERENT CSS size on every chart and at every viewport.
+  // Measured: the per-driver charts came out at 7.4 CSS px on a 320px phone and
+  // the comparison chart at 7.1, while the same comparison chart reached 28 px
+  // on a desktop -- a 4x range from one number, unreadable at one end and
+  // oversized at the other. No single user-unit value can fix that.
+  //
+  // So the labels are sized in terms of `--k`, the ratio of viewBox width to
+  // RENDERED width, which a ResizeObserver keeps current (see keepLegible). A
+  // font-size of `calc(var(--k) * 11px)` in user units therefore lands at 11 CSS
+  // pixels whatever the chart is doing, which is the only thing the reader cares
+  // about. The fallback of 1 keeps it sane before the observer first fires and
+  // in any environment without one.
+  //
+  // Capped, because the padding that holds these labels is baked into the
+  // geometry in user units. Uncapped, a narrow viewport pushed the labels past
+  // the axis gutter and they were clipped by the viewBox -- trading text that
+  // was too small for text that was not all there. `min()` keeps the rendered
+  // size constant wherever there is room and falls back to shrinking only where
+  // there is not, which on a 320px phone is about 9.5 CSS px rather than 7.4.
+  const axisSize = 'min(calc(var(--k, 1) * 11px), 12px)';
+  const legendSize = 'min(calc(var(--k, 1) * 11px), 11px)';
+  const titleSize = 'min(calc(var(--k, 1) * 12px), 12px)';
 
   const svg = svgEl('svg', {
     viewBox: `0 0 ${W} ${H}`,
@@ -141,7 +186,21 @@ export function logChart(series: Series[], opts: ChartOptions): SVGElement {
     })
   );
 
-  // decade gridlines
+  // Decade gridlines, THINNED to what will actually fit.
+  //
+  // The against-N chart spans 1e6 to 1e44, which is 39 decades drawn into 260
+  // units of height: measured, 38 of 38 adjacent label pairs overlapped, at a
+  // label pitch of 2.2px against a 9px box. The result was a solid smear down
+  // the axis that read as neither one number nor many. Every nth decade is
+  // labelled instead, chosen so the labels never come closer than their own
+  // height; the gridlines themselves still draw at every decade, because those
+  // do not collide.
+  const decades = Math.floor(yMax) - Math.ceil(yMin) + 1;
+  const usable = H - padT - padB;
+  // In USER units and unscaled: the labels are now capped at 12 user units
+  // whatever the chart, so the spacing they need is the same number everywhere.
+  const minPitch = 18;
+  const every = Math.max(1, Math.ceil((decades * minPitch) / Math.max(usable, 1)));
   for (let d = Math.ceil(yMin); d <= Math.floor(yMax); d++) {
     const y = sy(10 ** d);
     svg.append(
@@ -150,9 +209,10 @@ export function logChart(series: Series[], opts: ChartOptions): SVGElement {
         stroke: 'var(--border)', 'stroke-width': '1',
       })
     );
+    if ((d - Math.ceil(yMin)) % every !== 0) continue;
     const label = svgEl('text', {
-      x: String(padL - 5), y: String(y + 3.5), 'text-anchor': 'end',
-      'font-size': String(axisFont), fill: 'var(--text-dim)',
+      x: String(padL - 5 * scale), y: String(y + 3.5 * scale), 'text-anchor': 'end',
+      'font-size': axisSize, fill: 'var(--text-dim)',
     });
     label.textContent = d === 0 ? '1' : `1e${d}`;
     svg.append(label);
@@ -197,7 +257,7 @@ export function logChart(series: Series[], opts: ChartOptions): SVGElement {
     }
     const key = svgEl('text', {
       x: String(padL + 24 * scale), y: String(rowY + 3.2 * scale),
-      'font-size': String(legendFont), fill: 'var(--text-dim)',
+      'font-size': legendSize, fill: 'var(--text-dim)',
     });
     key.textContent = s.label;
     svg.append(key);
@@ -205,19 +265,23 @@ export function logChart(series: Series[], opts: ChartOptions): SVGElement {
 
   const xText = svgEl('text', {
     x: String((padL + W - padR) / 2), y: String(H - 6), 'text-anchor': 'middle',
-    'font-size': String(10 * scale), fill: 'var(--text-dim)',
+    'font-size': titleSize, fill: 'var(--text-dim)',
   });
   xText.textContent = opts.xLabel;
   svg.append(xText);
 
   const yText = svgEl('text', {
-    x: '9', y: String((padT + H - padB) / 2), 'text-anchor': 'middle',
-    'font-size': String(10 * scale), fill: 'var(--text-dim)',
-    transform: `rotate(-90 9 ${(padT + H - padB) / 2})`,
+    // x = 14, not 9. The title is rotated about this point, so its glyph height
+    // extends either side of it horizontally; at 9 the descenders crossed the
+    // left edge of the viewBox and were clipped by about 2px at every width.
+    x: '14', y: String((padT + H - padB) / 2), 'text-anchor': 'middle',
+    'font-size': titleSize, fill: 'var(--text-dim)',
+    transform: `rotate(-90 14 ${(padT + H - padB) / 2})`,
   });
   yText.textContent = opts.yLabel;
   svg.append(yText);
 
+  keepLegible(svg, W);
   chartsBySeries.set(series, svg);
   return svg;
 }

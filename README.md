@@ -218,9 +218,16 @@ npm run test:a11y  # axe-core WCAG 2.1 A/AA gate, desktop and 380px
 - **The verifier is isolated.** `src/verify/verify.ts` imports no algorithm module, and a test reads
   the file and asserts its import list to keep it that way — a bug in an algorithm must not also be
   the thing that blesses its own output.
-- **The a11y gate** drives the real controls through every state the lab renders — including both
+- **The a11y gate** drives the real controls through the states the lab renders — including both
   input failure branches, the parameters disclosure out of range, a cancelled row, the
-  negative-claim fixture and three hover states — and scans each one, at desktop and phone width.
+  negative-claim fixture and three hover states — and scans each one at 1280, 380 and 320 px, plus
+  a forced-colours pass. It runs axe's WCAG 2.1 A/AA rules *and* its `incomplete` bucket, an
+  arithmetic contrast walk over every text node, a non-text-contrast oracle ratcheted against an
+  empty baseline, reflow, target size (SC 2.5.8), and chart-to-data association.
+  What it does **not** do is activate controls by keyboard: it drives them with `click()`, and its
+  only `activeElement` assertion is a helper's own probe. That blind spot is why a Level A focus
+  failure lived on this page through a green gate, and it is why the keyboard and focus checks now
+  live in `e2e/claims.spec.ts` instead.
 - **Lifecycle tests** (`src/ui/state.test.ts`, `src/ui/runner.test.ts`) cover the parts that have
   nothing to do with mathematics and everything to do with truthfulness: batch cancellation,
   editing `N` or a bound mid-run, superseded progress messages, the queue, and the difference
@@ -237,6 +244,7 @@ npm run test:a11y  # axe-core WCAG 2.1 A/AA gate, desktop and 380px
 | **I5** | A trivial `gcd` from a GF(2) dependency is reported as a retry, with a count, not hidden. |
 | **I6** | A result may only be recorded against the experiment that produced it. A completion whose `N`, bounds or cap have changed is discarded and counted, never re-attributed. |
 | **I7** | Cancellation cancels: nothing running or queued may publish a result afterwards, and a cancelled run says so rather than reverting to "not run yet". A failure is a distinct state from a cancellation. |
+| **I8** | Every verdict is announced, not just painted. A run that finishes, gives up, is cancelled, errors, or is discarded says so through a live region — and progress deliberately does not, because narrating a million-iteration search is a flood, not a status message. |
 
 ---
 
@@ -267,6 +275,36 @@ recording, because each one was invisible to a green test suite:
   largest prime factor is 55021 — under the bound 10,000", a sentence contradicted by its own two
   numbers. The Legendre symbol is now computed once `p` is known, and the evidence carries a
   `withinBound` flag so no renderer can assert a relation the numbers do not support.
+
+## Accessibility
+
+WCAG 2.1 Level AA, gated in CI and green — plus the WCAG 2.2 criteria that apply here
+(2.4.11 Focus Not Obscured, 2.5.8 Target Size). Measured on the deployed build: no horizontal
+scrolling at 320, 360, 390 or 414 px on any tab; pinch-zoom unblocked; every control at or above
+the 24 x 24 target minimum except three footer links, which are inline in a sentence and take
+that criterion's own exception.
+
+Three real failures were found by audit *after* the first release and are fixed:
+
+- **SC 2.4.3 Focus Order (Level A).** Every panel rebuilds its DOM from the store, so pressing
+  Enter on a Run button destroyed that button and focus fell to `<body>` — a keyboard reader was
+  thrown to the top of the document every time they ran anything. Restoring focus was not enough
+  on its own: the replacement was `disabled`, and a disabled element cannot take focus, so every
+  transient unavailable state now uses `aria-disabled` with a guard in the handler.
+- **SC 2.4.11 Focus Not Obscured (AA).** The sticky top bar covered focused controls scrolled
+  into view.
+- **SC 4.1.3 Status Messages (AA).** A seven-run batch produced 8,508 DOM mutations inside the
+  board and zero inside any live region. The verdict is the whole product of this page and it was
+  delivered silently.
+
+None of the three was visible to the automated gate, and the reason is worth stating: they are
+properties of the *transition between* two renders, and axe only ever sees one render.
+
+**What is not established.** No human screen-reader testing has been done — no VoiceOver, no
+NVDA, no JAWS. Everything above is automated or measured. Automated tooling is generally reckoned
+to catch a minority of real accessibility barriers, so a green gate is evidence, not proof.
+Known and unfixed: the first control sits about 1.1 screens down on a 390 x 844 phone, and the
+RSA-rules table scrolls horizontally inside its own region at 320 px.
 
 ## References
 
