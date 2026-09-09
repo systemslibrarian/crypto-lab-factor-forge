@@ -30,6 +30,21 @@
 
 html {
   background-color: var(--bg); /* longhand — axe/WebKit miss the shorthand */
+  /* WCAG 2.2 SC 2.4.11 Focus Not Obscured (Minimum), Level AA.
+     The shared top bar is `position: sticky` and 65px tall, so when the browser
+     scrolls a focused element into view it can land underneath it -- measured on
+     the tabpanels, which take focus and were arriving at top=0 with the bar
+     covering 0-65. `scroll-margin-top` tells the scroll-into-view algorithm to
+     leave the bar's height clear, which is the fix the criterion is written for.
+     Set on everything so it applies to controls added later too.
+     6rem, not 5: the bar is 65px on a fine pointer but grows to 85px on a
+     coarse one, where the touch-target rules give its controls a 44px minimum
+     height. 5rem (80px) cleared the desktop bar and left a 5px overlap on
+     mobile -- measured, and caught by the claims suite on the mobile project. */
+  scroll-margin-top: 6rem;
+}
+* {
+  scroll-margin-top: 6rem;
 }
 
 body {
@@ -159,14 +174,32 @@ body {
   cursor: pointer;
 }
 .btn:hover { border-color: var(--accent-text); }
-.btn:disabled { color: var(--text-dim); border-color: var(--border); cursor: not-allowed; }
+/* An `aria-disabled` control is still FOCUSABLE -- that is the whole reason for
+   using it here -- so a keyboard reader can land on it, and SC 1.4.11's
+   exemption for "inactive user interface components" is not something to lean
+   on for a control the reader can actually reach. The boundary therefore stays
+   at --control-border (3.03:1 on --surface-2, 3.59:1 on --bg) rather than
+   dropping to the decorative --border, which measured 1.37:1 and was caught by
+   the non-text oracle the moment the attribute changed. The disabled state is
+   carried by the dimmed label, the cursor, and `aria-disabled` itself. */
+.btn:disabled,
+.btn[data-disabled="true"] {
+  color: var(--text-dim);
+  border-color: var(--control-border);
+  cursor: not-allowed;
+}
 .btn-primary {
   background: var(--accent);
   color: var(--accent-ink);
   border-color: var(--accent-text);
 }
 .btn-primary:hover { border-color: var(--text); }
-.btn-primary:disabled { background: var(--surface-2); color: var(--text-dim); border-color: var(--border); }
+.btn-primary:disabled,
+.btn-primary[data-disabled="true"] {
+  background: var(--surface-2);
+  color: var(--text-dim);
+  border-color: var(--control-border);
+}
 
 label { font-size: 0.85rem; font-weight: 600; color: var(--text-dim); display: block; margin-bottom: 0.25rem; }
 input[type="text"], input[type="number"], textarea, select {
@@ -191,6 +224,21 @@ select {
   font-family: var(--sans);
 }
 textarea { resize: vertical; min-height: 3.4rem; overflow-wrap: anywhere; }
+
+/* iOS Safari zooms the whole page when a form control smaller than 16px takes
+   focus, and does not zoom back out. At 0.9rem (14.4px) every input here
+   triggered it: tapping the N field threw the layout off and left the reader to
+   pinch back. 16px on coarse pointers only, so the desktop density is unchanged.
+   This is not a WCAG failure -- it is squarely a mobile usability defect, and a
+   loud one on the control this page is built around. */
+@media (pointer: coarse) {
+  input[type="text"],
+  input[type="number"],
+  textarea,
+  select {
+    font-size: 16px;
+  }
+}
 /* The border recolour is a REINFORCEMENT, never the only carrier: params.ts
    renders a worded .field-error beside it, and race.ts pairs the attribute with
    a full verdict. Hue alone would fail SC 1.4.1 and would vanish entirely in a
@@ -486,7 +534,9 @@ details[open] summary { margin-bottom: 0.4rem; }
         Back button at step zero, rendered identically to a live one. GrayText
         is the system colour reserved for exactly this. */
   .btn:disabled,
-  .btn-primary:disabled {
+  .btn[data-disabled="true"],
+  .btn-primary:disabled,
+  .btn-primary[data-disabled="true"] {
     color: GrayText;
     border-color: GrayText;
   }

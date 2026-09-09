@@ -10,7 +10,7 @@
 import { algorithmMeta } from '../factor/types';
 import { WEAKNESSES, type WeaknessTarget } from '../gen/weak';
 import { verifyFactorization } from '../verify/verify';
-import { clear, el, groupDigits, kv, table, verdict } from './dom';
+import { clear, el, groupDigits, isDisabled, kv, setDisabled, table, verdict } from './dom';
 import type { Runner } from './runner';
 import { emit, freshSeed, setN, state } from './state';
 
@@ -58,7 +58,7 @@ export function mountForgePanel(root: HTMLElement, runner: Runner): () => void {
   const controls = el('div', { class: 'row', style: 'margin-top:.6rem' });
   const go = el('button', { class: 'btn btn-primary', id: 'forge-go', type: 'button' }, 'Forge and prove it');
   const use = el('button', { class: 'btn', id: 'forge-use', type: 'button' }, 'Send to the race board');
-  use.setAttribute('disabled', 'true');
+  setDisabled(use, true);
   controls.append(go, use);
 
   card.append(el('h2', { text: 'The forge' }), field, bitsField, blurb, rule, controls);
@@ -77,10 +77,11 @@ export function mountForgePanel(root: HTMLElement, runner: Runner): () => void {
   select.addEventListener('change', describe);
 
   go.addEventListener('click', () => {
+    if (isDisabled(go)) return;
     void forge(runner, select.value as WeaknessTarget, Number(bits.value), out, go, use);
   });
   use.addEventListener('click', () => {
-    if (!state.lastGenerated) return;
+    if (isDisabled(use) || !state.lastGenerated) return;
     setN(BigInt(state.lastGenerated.n));
     const tab = document.querySelector<HTMLButtonElement>('#tab-race');
     tab?.click();
@@ -92,8 +93,7 @@ export function mountForgePanel(root: HTMLElement, runner: Runner): () => void {
   });
 
   return () => {
-    if (state.lastGenerated) use.removeAttribute('disabled');
-    else use.setAttribute('disabled', 'true');
+    setDisabled(use, !state.lastGenerated);
   };
 }
 
@@ -116,14 +116,14 @@ async function forge(
   use: HTMLElement
 ): Promise<void> {
   const token = ++forgeToken;
-  go.setAttribute('disabled', 'true');
+  setDisabled(go, true);
   clear(out);
   out.append(el('p', { class: 'progress', text: 'Generating candidates and running the proof…' }));
 
   const seed = freshSeed();
   const res = await runner.generate(target, bits, state.params, seed);
   if (token !== forgeToken) return; // a later request supersedes this one
-  go.removeAttribute('disabled');
+  setDisabled(go, false);
 
   if (!res.ok) {
     clear(out);
@@ -185,7 +185,7 @@ async function forge(
     })
   );
   out.append(card);
-  use.removeAttribute('disabled');
+  setDisabled(use, false);
   emit();
 
   if (target !== 'none') return;

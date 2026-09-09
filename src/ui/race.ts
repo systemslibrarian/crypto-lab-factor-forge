@@ -13,7 +13,7 @@ import { VECTORS } from '../factor/vectors';
 import { describeShape } from '../verify/verify';
 import { treeLeaves, type TreeNode } from '../factor/tree';
 import { isProbablePrime } from '../factor/primality';
-import { clear, el, groupDigits, table, verdict } from './dom';
+import { clear, el, groupDigits, isDisabled, setDisabled, table, verdict } from './dom';
 import { exportRun, permalinkFor } from './provenance';
 import { paramsCard } from './params';
 import type { Runner } from './runner';
@@ -121,7 +121,7 @@ export function mountRacePanel(root: HTMLElement, runner: Runner): () => void {
     'Run all seven, one at a time'
   );
   const cancel = el('button', { class: 'btn', id: 'cancel', type: 'button' }, 'Cancel');
-  cancel.setAttribute('disabled', 'true');
+  setDisabled(cancel, true);
   const permalink = el('button', { class: 'btn', id: 'permalink', type: 'button' }, 'Copy permalink');
   controls.append(runAll, cancel, permalink);
   card.append(controls);
@@ -165,6 +165,7 @@ export function mountRacePanel(root: HTMLElement, runner: Runner): () => void {
   const treeBtn = el('button', { class: 'btn', id: 'tree-run', type: 'button' }, 'Factor N completely');
   const treeOut = el('div', { id: 'tree-out', role: 'status', 'aria-live': 'polite' });
   treeBtn.addEventListener('click', () => {
+    if (isDisabled(treeBtn)) return;
     void runTree(runner, treeBtn, treeOut);
   });
   treeCard.append(treeBtn, treeOut);
@@ -195,9 +196,11 @@ export function mountRacePanel(root: HTMLElement, runner: Runner): () => void {
   });
 
   runAll.addEventListener('click', () => {
+    if (isDisabled(runAll)) return;
     void runAllSequentially(runner);
   });
   cancel.addEventListener('click', () => {
+    if (isDisabled(cancel)) return;
     // Order matters. Invalidate the batch FIRST so nothing queued can start,
     // then terminate the worker. Reversed, the loop's next iteration can slip
     // in between and dispatch a fresh job onto a rebuilt worker.
@@ -217,10 +220,8 @@ export function mountRacePanel(root: HTMLElement, runner: Runner): () => void {
   return () => {
     renderBoard(board, runner);
     const busy = anyRunning();
-    if (busy) cancel.removeAttribute('disabled');
-    else cancel.setAttribute('disabled', 'true');
-    if (busy) runAll.setAttribute('disabled', 'true');
-    else runAll.removeAttribute('disabled');
+    setDisabled(cancel, !busy);
+    setDisabled(runAll, busy);
     renderWorkerNote(workerNote, runner);
   };
 }
@@ -429,11 +430,12 @@ function raceRow(id: AlgorithmId, runner: Runner): HTMLElement {
   const busy = state_.kind === 'busy';
   const btn = el(
     'button',
-    { class: 'btn', type: 'button', 'data-run': id },
+    { class: 'btn', type: 'button', 'data-run': id, 'data-focus-key': `run-${id}` },
     busy ? 'Running…' : state_.kind === 'idle' ? 'Run' : 'Run again'
   );
-  if (busy) btn.setAttribute('disabled', 'true');
+  setDisabled(btn, busy);
   btn.addEventListener('click', () => {
+    if (isDisabled(btn)) return;
     void runOne(runner, id);
   });
   actions.append(btn);
@@ -453,7 +455,11 @@ function raceRow(id: AlgorithmId, runner: Runner): HTMLElement {
         text: capped ? `cap ${rec.outcome.ms.toFixed(0)} ms` : `${rec.outcome.ms.toFixed(1)} ms`,
       })
     );
-    const exportBtn = el('button', { class: 'btn btn-tiny', type: 'button' }, 'Export run');
+    const exportBtn = el(
+      'button',
+      { class: 'btn btn-tiny', type: 'button', 'data-focus-key': `export-${id}` },
+      'Export run'
+    );
     exportBtn.addEventListener('click', () => exportRun(rec));
     actions.append(exportBtn);
   }
@@ -476,7 +482,7 @@ function raceRow(id: AlgorithmId, runner: Runner): HTMLElement {
  *    could be presented as a complete one.
  */
 async function runTree(runner: Runner, btn: HTMLElement, out: HTMLElement): Promise<void> {
-  btn.setAttribute('disabled', 'true');
+  setDisabled(btn, true);
   clear(out);
   out.append(el('p', { class: 'progress', text: 'Recursing…' }));
   // Snapshot the experiment. Everything below judges against THESE values.
@@ -490,7 +496,7 @@ async function runTree(runner: Runner, btn: HTMLElement, out: HTMLElement): Prom
         ? verdict('idle', 'Cancelled.', 'The recursion was stopped; nothing is claimed.')
         : verdict('fail', 'The recursion could not run.', `${res.message}. This is a failure of the page, not a result about N.`)
     );
-    btn.removeAttribute('disabled');
+    setDisabled(btn, false);
     return;
   }
   if (!contextStillCurrent(ctx)) {
@@ -501,7 +507,7 @@ async function runTree(runner: Runner, btn: HTMLElement, out: HTMLElement): Prom
         `That tree was computed for ${ctx.n}, which is no longer the number on screen. Attributing it to the current N would be a false statement, so it is thrown away.`
       )
     );
-    btn.removeAttribute('disabled');
+    setDisabled(btn, false);
     return;
   }
 
@@ -536,7 +542,7 @@ async function runTree(runner: Runner, btn: HTMLElement, out: HTMLElement): Prom
   out.append(
     table(['Composite', 'Split by', 'Time'], splitRows(node), 'Which method split each composite')
   );
-  btn.removeAttribute('disabled');
+  setDisabled(btn, false);
 }
 
 /** The first `stuck` reason anywhere in the tree, not just at the root. */

@@ -5,6 +5,7 @@ import { mountRacePanel } from './ui/race';
 import { Runner } from './ui/runner';
 import { mountShorPanel } from './ui/shor';
 import { mountTracePanel } from './ui/trace';
+import { preserveFocus } from './ui/dom';
 import { PARAM_LIMITS } from './ui/params';
 import { restoreFromUrl } from './ui/provenance';
 import { setCanceller, setN, state, subscribe } from './ui/state';
@@ -69,10 +70,17 @@ function wireTabs(): void {
 }
 
 subscribe(() => {
-  for (const [panel, m] of mounted) {
-    const root = document.getElementById(`panel-${panel}`);
-    if (root && !root.hidden) m.update();
-  }
+  // Wrapped, because these updates rebuild the DOM the reader is standing on.
+  // See `preserveFocus`: without it, pressing Enter on a Run button destroyed
+  // that button and dropped focus to <body> -- a Level A failure (SC 2.4.3)
+  // that no axe scan can see, because it is a property of the transition
+  // between two renders rather than of either one.
+  preserveFocus(() => {
+    for (const [panel, m] of mounted) {
+      const root = document.getElementById(`panel-${panel}`);
+      if (root && !root.hidden) m.update();
+    }
+  });
 });
 
 // The arrival state is the pinned "p and q ten apart" vector: small enough that

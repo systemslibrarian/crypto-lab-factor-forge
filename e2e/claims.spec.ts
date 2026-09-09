@@ -650,3 +650,128 @@ test('the ladder never plots a factor-driven method against the size of N', asyn
   // Only the methods that genuinely depend on N share the against-N chart.
   await expect(page.locator('.card', { hasText: 'The only fair' })).toContainText('Shor');
 });
+
+/**
+ * WCAG 2.4.3 Focus Order (Level A).
+ *
+ * Every panel rebuilds its DOM from the store on each state change, which is
+ * what keeps the rendering and the state impossible to disagree. Measured
+ * before the fix: pressing Enter on a board Run button destroyed that button
+ * and `document.activeElement` fell back to `<body>`, so a keyboard reader was
+ * thrown to the top of the document every time they ran anything and had to Tab
+ * all the way back to run the next one. No axe scan can see this -- it is a
+ * property of the transition between two renders, and axe only ever sees one.
+ */
+test('keyboard focus survives every re-render', async ({ page }) => {
+  const active = (): Promise<string> =>
+    page.evaluate(() => {
+      const a = document.activeElement;
+      if (!a || a === document.body) return 'BODY';
+      return `${a.tagName.toLowerCase()}${a.id ? '#' + a.id : ''}|${(a.textContent ?? '').trim().slice(0, 24)}`;
+    });
+
+  // A board Run button: the row it lives in is rebuilt twice, once when the run
+  // starts and once when it finishes.
+  await page.locator('.race-row[data-algorithm="trial"] button[data-run]').focus();
+  await page.keyboard.press('Enter');
+  await expect(page.locator('.race-row[data-algorithm="trial"] .race-time')).toBeVisible({
+    timeout: 120_000,
+  });
+  expect(await active(), 'focus must not fall to body after a row re-renders').not.toBe('BODY');
+  expect(await active()).toContain('Run again');
+
+  // The batch button, which becomes unavailable the instant it is pressed.
+  await page.locator('#run-all').focus();
+  await page.keyboard.press('Enter');
+  expect(await active(), 'focus must survive the batch button going unavailable').toContain('run-all');
+
+  // The Trace stepper rebuilds the entire panel on every click, including at
+  // the end of the trace where Next becomes unavailable.
+  await page.getByRole('tab', { name: 'Trace' }).click();
+  await page.locator('#trace-next').focus();
+  await page.keyboard.press('Enter');
+  expect(await active()).toContain('trace-next');
+  await page.getByRole('button', { name: 'Show all steps' }).click();
+  await page.locator('#trace-next').focus();
+  expect(await active()).toContain('trace-next');
+  // ...and it is unavailable via aria-disabled, NOT the `disabled` attribute,
+  // because a `disabled` replacement cannot take focus back at all.
+  await expect(page.locator('#trace-next')).toHaveAttribute('aria-disabled', 'true');
+  await expect(page.locator('#trace-next')).not.toHaveAttribute('disabled', /.*/);
+});
+
+/**
+ * WCAG 2.2 SC 2.4.11 Focus Not Obscured (Minimum), Level AA. The shared top bar
+ * is `position: sticky` and 65px tall, so a focused element scrolled into view
+ * could land underneath it.
+ */
+test('a focused element is never hidden behind the sticky bar', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 500 });
+  await page.goto('.');
+  const obscured: string[] = [];
+  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur?.());
+  for (let i = 0; i < 30; i++) {
+    await page.keyboard.press('Tab');
+    const hit = await page.evaluate(() => {
+      const a = document.activeElement as HTMLElement | null;
+      const bar = document.querySelector('.cl-topbar');
+      if (!a || a === document.body || !bar) return null;
+      // The bar's own controls sit inside it and are not obscured BY it.
+      if (bar.contains(a)) return null;
+      const b = bar.getBoundingClientRect();
+      const e = a.getBoundingClientRect();
+      if (e.height === 0) return null;
+      return e.top < b.bottom && e.bottom > b.top
+        ? `${a.tagName.toLowerCase()}${a.id ? '#' + a.id : ''} top=${Math.round(e.top)} bar=${Math.round(b.bottom)}`
+        : null;
+    });
+    if (hit) obscured.push(hit);
+  }
+  expect(obscured, 'focused controls hidden behind the sticky top bar').toEqual([]);
+});
+
+/**
+ * Mobile: no horizontal scrolling at the narrowest width anyone still designs
+ * for, on any tab. SC 1.4.10 Reflow is specified at 320 CSS px.
+ */
+test('nothing scrolls sideways at 320px, on any tab', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 568 });
+  await page.goto('.');
+  const overflow = async (): Promise<number> =>
+    page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+  expect(await overflow(), 'Factor N').toBe(0);
+  for (const name of ['Weak N Forge', 'Trace', 'The Ladder', 'Shor']) {
+    await page.getByRole('tab', { name: new RegExp(name) }).click();
+    expect(await overflow(), name).toBe(0);
+  }
+});
+
+/**
+ * iOS Safari zooms the whole page when a control smaller than 16px takes focus,
+ * and does not zoom back out. Every input here was 14.4px, so tapping the field
+ * this page is built around threw the layout off and left the reader to pinch
+ * back. Not a WCAG failure; a loud mobile usability one.
+ */
+test('form controls are 16px on touch, so iOS does not auto-zoom', async ({ page }) => {
+  const sizes = await page.evaluate(() =>
+    [...document.querySelectorAll('input, textarea, select')].map(
+      (e) => `${e.tagName.toLowerCase()}${e.id ? '#' + e.id : ''}=${getComputedStyle(e).fontSize}`
+    )
+  );
+  const coarse = await page.evaluate(() => matchMedia('(pointer: coarse)').matches);
+  if (!coarse) {
+    // Desktop keeps its density; the rule is scoped to coarse pointers.
+    expect(sizes.length).toBeGreaterThan(0);
+    return;
+  }
+  const small = sizes.filter((s) => parseFloat(s.split('=')[1]) < 16);
+  expect(small, 'controls below 16px trigger iOS auto-zoom on focus').toEqual([]);
+});
+
+/** Pinch-zoom must not be blocked (SC 1.4.4 Resize Text). */
+test('the viewport meta does not block zooming', async ({ page }) => {
+  const content = await page.locator('meta[name="viewport"]').getAttribute('content');
+  expect(content).toContain('width=device-width');
+  expect(content).not.toContain('user-scalable=no');
+  expect(content).not.toMatch(/maximum-scale\s*=\s*[12](\.0)?\b/);
+});

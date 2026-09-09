@@ -9,7 +9,7 @@
 
 import { algorithmMeta, type AlgorithmId } from '../factor/types';
 import { ALGORITHM_ORDER } from '../factor/registry';
-import { clear, el, kv, verdict } from './dom';
+import { clear, el, isDisabled, kv, setDisabled, verdict } from './dom';
 import { completedRuns, emit, state } from './state';
 import { whyDetail } from './why';
 
@@ -78,13 +78,18 @@ export function mountTracePanel(root: HTMLElement): () => void {
     const next = el('button', { class: 'btn btn-primary', id: 'trace-next', type: 'button' }, 'Next ›');
     const all = el('button', { class: 'btn', id: 'trace-all', type: 'button' }, 'Show all steps');
     const progress = el('span', { class: 'step-progress', id: 'trace-progress', text: `Step ${shown} / ${steps.length}` });
-    if (shown === 0) back.setAttribute('disabled', 'true');
-    if (shown >= steps.length) next.setAttribute('disabled', 'true');
+    // aria-disabled, not `disabled`: the stepper rebuilds this whole panel on
+    // every click, and a `disabled` replacement cannot take focus back, so a
+    // keyboard reader stepping to the last step was dropped to <body>.
+    setDisabled(back, shown === 0);
+    setDisabled(next, shown >= steps.length);
     back.addEventListener('click', () => {
+      if (isDisabled(back)) return;
       state.traceStep = Math.max(0, shown - 1);
       emit();
     });
     next.addEventListener('click', () => {
+      if (isDisabled(next)) return;
       state.traceStep = Math.min(steps.length, shown + 1);
       emit();
     });

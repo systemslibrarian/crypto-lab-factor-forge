@@ -73,3 +73,67 @@ export function table(headers: string[], rows: (string | Node)[][], label: strin
 export function groupDigits(v: string): string {
   return v.replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
 }
+
+/**
+ * Keep keyboard focus alive across a re-render (WCAG 2.4.3 Focus Order, Level A).
+ *
+ * Every panel here rebuilds its DOM from the store on each state change, which
+ * is what keeps the rendering and the state impossible to disagree. The cost was
+ * a real and serious keyboard barrier: pressing Enter on a board Run button
+ * destroyed that button, and `document.activeElement` fell back to `<body>` --
+ * measured, not theorised. A keyboard user was thrown to the top of the document
+ * every time they ran anything, and had to Tab all the way back to run the next
+ * one. Nothing in the axe gate can see this; it is a property of what happens
+ * BETWEEN two renders, and axe only ever sees one.
+ *
+ * So: note which control had focus, by a key that survives the rebuild, and give
+ * focus back to its replacement. `preventScroll` because the element is already
+ * where the reader left it and yanking the viewport would be its own defect.
+ *
+ * Focus is restored only when it was genuinely LOST (activeElement is body or
+ * null). If the render moved focus deliberately, or the reader moved it
+ * themselves mid-render, that decision stands -- stealing focus back would be
+ * the same defect pointing the other way.
+ */
+export function focusKeyOf(el: Element | null): string | null {
+  if (!el || el === document.body) return null;
+  const key = el.getAttribute('data-focus-key');
+  if (key) return `[data-focus-key="${CSS.escape(key)}"]`;
+  if (el.id) return `#${CSS.escape(el.id)}`;
+  return null;
+}
+
+export function preserveFocus(render: () => void): void {
+  const key = focusKeyOf(document.activeElement);
+  render();
+  if (!key) return;
+  const active = document.activeElement;
+  if (active && active !== document.body) return; // focus survived, or moved on purpose
+  const replacement = document.querySelector<HTMLElement>(key);
+  if (replacement) replacement.focus({ preventScroll: true });
+}
+
+/**
+ * Mark a control unavailable WITHOUT removing it from the keyboard.
+ *
+ * The `disabled` attribute takes an element out of the tab order entirely, and
+ * that has two costs this page was paying. A keyboard reader who presses Enter
+ * on Run is standing on a control that becomes `disabled` in the same tick:
+ * focus has nowhere to go and falls to `<body>` (SC 2.4.3). And a screen-reader
+ * user tabbing through never encounters the control at all, so the fact that a
+ * run is in progress is simply absent from their experience.
+ *
+ * `aria-disabled` says the same thing to assistive technology while leaving the
+ * control focusable, which is why it is the recommended pattern for exactly this
+ * case. The trade is that the browser no longer blocks activation for us, so
+ * every handler has to check -- `isDisabled` below, called at the top of each.
+ */
+export function setDisabled(el: HTMLElement, disabled: boolean): void {
+  el.setAttribute('aria-disabled', String(disabled));
+  if (disabled) el.setAttribute('data-disabled', 'true');
+  else el.removeAttribute('data-disabled');
+}
+
+export function isDisabled(el: HTMLElement): boolean {
+  return el.getAttribute('aria-disabled') === 'true';
+}
