@@ -98,50 +98,49 @@ own browser tab.
 Recorded here rather than left to `npm audit` output, because the resolution needs an argument and
 not just a version number.
 
-### GHSA-82fw-gwwq-j7x9 — `@vitest/mocker` path traversal / arbitrary file read
+### GHSA-82fw-gwwq-j7x9 — `@vitest/mocker` path traversal — RESOLVED
 
 | | |
 |---|---|
 | Advisory | [GHSA-82fw-gwwq-j7x9](https://github.com/advisories/GHSA-82fw-gwwq-j7x9) |
 | Severity | Moderate, CVSS 3.1 base 5.9 (`AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:N/A:N`), CWE-22 |
 | Affected | `vitest` and `@vitest/mocker`, `>= 2.1.0 < 4.1.11` |
-| First patched version | **4.1.11** |
-| This repository | `vitest` `^3.2.4`, resolved to 3.2.7 — inside the affected range |
-| Reachability | Development only. Not reachable from the shipped site. |
+| First patched version | 4.1.11 |
+| This repository | `vitest` `^5.0.0` — past the affected range |
+| Status | Resolved. `npm audit` reports zero vulnerabilities. |
 
-**On the fixed version.** `npm audit` reports `fixAvailable: { "name": "vitest", "version":
-"5.0.0", "isSemVerMajor": true }`. That is npm naming the latest release it can reach, not the
-first release that carries the fix. The advisory's own affected range ends at `< 4.1.11`, so
-**4.1.11 is the first patched version**. Anyone reading the audit summary alone would conclude a
-two-major jump was required; it is not.
+Kept here rather than deleted, because the argument is the part worth keeping.
 
-**Why it cannot reach the shipped site.** `vitest` is a `devDependency` and the site has no
-runtime dependencies at all. No Vitest code is bundled by `vite build`, so no visitor to the
-deployed page can execute any of it. The advisory is a risk to a *developer's* machine while
-running the test suite, not to a user of the lab.
+**It was never reachable from the shipped site.** `vitest` is a `devDependency` and this site has
+no runtime dependencies at all — no Vitest code is bundled by `vite build`, so no visitor to the
+deployed page could execute any of it. The advisory was a risk to a *developer's* machine while
+running the suite.
 
-**Why it is not reachable here even in development.** The vulnerability is in the mocker's
-redirect-mock path handling. This repository's unit suite uses no mocking at all — no `vi.mock`,
-no `vi.doMock`, no redirect mocks anywhere in `src/**/*.test.ts`. The tests run real BigInt
-arithmetic against naive reference implementations, which is the point of them. The vulnerable
-code path is present in `node_modules` and is never entered.
+**It was not reachable here even in development.** The vulnerability is in the mocker's
+redirect-mock path handling, and this repository's unit suite uses no mocking at all: no
+`vi.mock`, no `vi.doMock`, no redirect mocks anywhere in `src/**/*.test.ts`. The tests run real
+BigInt arithmetic against naive reference implementations, which is the point of them.
 
-**Resolution: time-bounded exception, holding at `^3.2.4` until 2026-12-08.**
+**On reading `npm audit` carefully.** The audit reported
+`fixAvailable: { "name": "vitest", "version": "5.0.0", "isSemVerMajor": true }`. That is npm naming
+the latest release it can reach, not the first release carrying the fix — the advisory's own
+affected range ends at `< 4.1.11`. Anyone acting on the audit summary alone would have concluded a
+two-major jump was mandatory. It was not; the two-major jump is simply what Dependabot proposed and
+what the gate passed.
 
-The reason is not reluctance to take the major. It is that raising the range alone would break the
-gate. CI installs with `npm ci`, which **fails outright** when `package.json` and
-`package-lock.json` disagree; changing the range without regenerating the lockfile in the same
-commit turns every run red at the install step, before a single test executes. Trading a
-non-reachable, development-only moderate for a hard CI outage is a bad trade.
+**How it was closed.** Dependabot opened the major as its own pull request, the full gate ran on
+it, and the auto-merge job merged it on the strength of that gate — which is the policy working as
+designed. The version and the lockfile moved in the same commit, which is the part that matters:
+`npm ci` fails outright when `package.json` and `package-lock.json` disagree, so a range bumped by
+hand without regenerating the lockfile turns every CI run red at the install step.
 
-The bump is therefore a single deliberate change — `npm install --save-dev vitest@^4.1.11`,
-committing `package.json` and `package-lock.json` together, then confirming the unit suite still
-passes on Vitest 4 (its config surface changed between 3 and 4, so this needs running, not
-assuming). Dependabot will also propose it on its own: majors are deliberately excluded from the
-grouped npm PR, so it arrives as its own pull request and is gated like anything else.
+### An unapproved install script: `fsevents`
 
-If that has not landed by **2026-12-08**, this exception has expired and the bump should be done
-by hand rather than renewed silently.
+`npm ci` on macOS warns that `fsevents@2.3.3` has an install script not covered by `allowScripts`.
+It is deliberately left unapproved. `fsevents` is a darwin-only optional dependency of Vite's file
+watcher; it is absent on the Linux CI runner, the install succeeds without it, and approving an
+install script that nothing here needs is the wrong default. The warning is npm's gate doing its
+job, not a defect.
 
 ## Scope
 
