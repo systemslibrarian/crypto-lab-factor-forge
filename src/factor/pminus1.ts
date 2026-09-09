@@ -27,7 +27,7 @@ export function factorPMinus1(n: bigint, params: Params, budget: Budget): Factor
   steps.push({
     label: 'Choose the bound',
     detail:
-      'Stage 1 raises a to every prime power below B1. That works if and only if p - 1 is built entirely from primes at or below B1 -- the learner sets B1, and B1 alone decides which primes are catchable.',
+      'Stage 1 raises a to every prime power below B1. That reaches p when the order of a modulo p is built entirely from primes at or below B1 -- which, for a p - 1 built that way, is almost always. The learner sets B1, and B1 is what decides which primes are within reach.',
     values: [
       { key: 'B1', value: B1.toLocaleString() },
       { key: 'primes <= B1', value: primes.length.toLocaleString() },
@@ -190,7 +190,11 @@ function succeed(
   };
 }
 
-/** Invariant I2: the smoothness claim is FACTORED, never asserted. */
+/**
+ * Invariant I2: the smoothness claim is FACTORED, never asserted -- and whether
+ * it actually clears the bound is computed here too, so no caller can render a
+ * sentence the numbers contradict.
+ */
 export function smoothnessEvidence(group: string, value: bigint, bound: number): WhyEvidence {
   const f = factorSmall(value);
   if (!f) {
@@ -202,6 +206,7 @@ export function smoothnessEvidence(group: string, value: bigint, bound: number):
       largestPrime: 'unknown',
       bound,
       complete: false,
+      withinBound: false,
     };
   }
   const largest = f.reduce((acc, x) => (x.prime > acc ? x.prime : acc), 1n);
@@ -213,5 +218,6 @@ export function smoothnessEvidence(group: string, value: bigint, bound: number):
     largestPrime: String(largest),
     bound,
     complete: true,
+    withinBound: largest <= BigInt(bound),
   };
 }

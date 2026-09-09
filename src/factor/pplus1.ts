@@ -14,7 +14,7 @@
  * Williams, "A p+1 method of factoring", Math. Comp. 39 (1982) 225-234.
  */
 
-import { gcd, primesBelow } from './bigint';
+import { gcd, jacobi, primesBelow } from './bigint';
 import { smoothnessEvidence } from './pminus1';
 import { gaveUp, type Budget, type FactorOutcome, type Params, type TraceStep } from './types';
 
@@ -94,17 +94,39 @@ export function factorPPlus1(n: bigint, params: Params, budget: Budget): FactorO
       const found = g;
       const p = g < n / g ? g : n / g;
       const q = n / p;
-      const why = smoothnessEvidence('p + 1', found + 1n, B1);
+
+      // WHICH GROUP actually caught it is a computed fact, not an assumption.
+      //
+      // V_k(a,1) mod p satisfies V_{p-eps} = 2 where eps = (a^2 - 4 | p) is the
+      // Legendre symbol. So the sequence lives in a group of order p + 1 only
+      // when a^2 - 4 is a NON-residue; when it is a residue the group has order
+      // p - 1 and this method has just re-run Pollard's p-1 in disguise. The
+      // method cannot know that in advance -- p is unknown while it searches --
+      // but once p is in hand the symbol is a two-line computation, so there is
+      // no excuse for asserting the wrong group afterwards.
+      //
+      // This used to report `p + 1` unconditionally, and on the smooth-p-1
+      // vector it printed "p + 1 = 21998936388, whose largest prime factor is
+      // 55021 - under the bound 10,000": a sentence contradicted by its own two
+      // numbers, attributing the win to a group that had nothing to do with it.
+      const symbol = jacobi(bases[bi] * bases[bi] - 4n, found);
+      const viaPlus = symbol === -1;
+      const order = viaPlus ? found + 1n : found - 1n;
+      const label = viaPlus ? 'p + 1' : 'p - 1';
+      const why = smoothnessEvidence(label, order, B1);
       steps.push({
         label: 'Factor recovered',
-        detail:
-          'Check WHY: factor p + 1. Its largest prime is what had to sit below B1 -- and note that p - 1 for the same p need not be smooth at all.',
+        detail: viaPlus
+          ? `Check WHY: a^2 - 4 is a non-residue mod p (Legendre symbol -1), so this Lucas sequence really did live in the group of order p + 1. Factor p + 1 and its largest prime is what had to sit below B1 -- and note that p - 1 for the same p need not be smooth at all.`
+          : `Check WHY: a^2 - 4 turned out to be a quadratic RESIDUE mod p (Legendre symbol +1), so the sequence was living in the group of order p - 1, not p + 1. This run found the factor, but it found it the way Pollard's p-1 would have. That is worth knowing: p+1 only earns its name on half the bases.`,
         values: [
           { key: 'the factor found', value: String(found) },
           { key: 'the cofactor', value: String(n / found) },
-          { key: 'p + 1', value: String(found + 1n) },
+          { key: 'base a', value: String(bases[bi]) },
+          { key: '(a^2 - 4 | p)', value: symbol === -1 ? '-1 (non-residue -> order p + 1)' : symbol === 1 ? '+1 (residue -> order p - 1)' : '0 (degenerate)' },
+          { key: label, value: String(order) },
           {
-            key: 'p + 1 factored',
+            key: `${label} factored`,
             value:
               why.kind === 'smoothness' && why.complete
                 ? why.factorization.map((f) => (f.exponent > 1 ? `${f.prime}^${f.exponent}` : f.prime)).join(' * ')
@@ -120,7 +142,11 @@ export function factorPPlus1(n: bigint, params: Params, budget: Budget): FactorO
         trace: {
           algorithm: 'pplus1',
           steps,
-          metrics: [...ppMetrics(processed, bi), { key: 'base', value: String(bases[bi]) }],
+          metrics: [
+            ...ppMetrics(processed, bi),
+            { key: 'base', value: String(bases[bi]) },
+            { key: 'group that caught it', value: label },
+          ],
           why,
           gaveUp: null,
         },

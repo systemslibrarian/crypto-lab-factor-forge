@@ -16,8 +16,17 @@ export interface SerializedOutcome {
 }
 
 export type WorkerRequest =
-  | { kind: 'factor'; jobId: number; algorithm: AlgorithmId; n: string; params: Params; maxMs: number }
-  | { kind: 'generate'; jobId: number; target: WeaknessTarget; bits: number; params: Params }
+  | {
+      kind: 'factor';
+      jobId: number;
+      algorithm: AlgorithmId;
+      n: string;
+      params: Params;
+      maxMs: number;
+      /** The worker is a separate module instance, so the seed has to travel. */
+      seed: string;
+    }
+  | { kind: 'generate'; jobId: number; target: WeaknessTarget; bits: number; params: Params; seed: string }
   | { kind: 'tree'; jobId: number; n: string; params: Params; maxMs: number };
 
 export interface SerializedGenerated {

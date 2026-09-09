@@ -12,7 +12,7 @@
 
 import { DEFAULT_PARAMS, type Params } from '../factor/types';
 import { el } from './dom';
-import { emit, state } from './state';
+import { paramsChanged, state } from './state';
 
 interface Knob {
   key: keyof Params | 'capMs';
@@ -127,23 +127,35 @@ export function paramsCard(): HTMLElement {
       min: String(knob.min),
       max: String(knob.max),
       step: '1',
-      'aria-describedby': `${knob.id}-hint`,
+      'aria-describedby': `${knob.id}-hint ${knob.id}-error`,
     }) as HTMLInputElement;
     input.value = String(currentValue(knob.key));
+    // A worded message, not just a red border. `aria-invalid` plus a recoloured
+    // border was the ONLY carrier of a rejected parameter: the border is there
+    // either way and only its hue changes, which is colour as the sole visual
+    // carrier (SC 1.4.1) and invisible in a forced-colours theme. Every other
+    // rejection on this page already pairs the attribute with words.
+    const error = el('p', { class: 'field-error', id: `${knob.id}-error`, role: 'alert' });
+    error.hidden = true;
+
     input.addEventListener('change', () => {
       const v = Number(input.value);
       if (!Number.isFinite(v) || v < knob.min || v > knob.max) {
         input.setAttribute('aria-invalid', 'true');
+        error.textContent = `Not applied: must be a whole number between ${knob.min.toLocaleString()} and ${knob.max.toLocaleString()}. The previous value is still in effect.`;
+        error.hidden = false;
         return;
       }
       input.setAttribute('aria-invalid', 'false');
+      error.hidden = true;
       setValue(knob.key, Math.round(v));
-      state.runs.clear();
-      state.traceFocus = null;
-      state.traceStep = 0;
-      emit();
+      // A verdict earned under a different bound is not a verdict about this
+      // one, and a run still IN FLIGHT under the old bound is worse than a
+      // stale verdict -- so this retires both.
+      paramsChanged();
     });
     wrap.append(input);
+    wrap.append(error);
     wrap.append(el('p', { id: `${knob.id}-hint`, class: 'small muted', text: knob.hint }));
     grid.append(wrap);
   }
@@ -153,17 +165,30 @@ export function paramsCard(): HTMLElement {
   reset.addEventListener('click', () => {
     state.params = { ...DEFAULT_PARAMS };
     state.capMs = 8000;
-    state.runs.clear();
-    state.traceFocus = null;
     for (const knob of KNOBS) {
       const input = document.getElementById(knob.id) as HTMLInputElement | null;
-      if (input) input.value = String(currentValue(knob.key));
+      if (input) {
+        input.value = String(currentValue(knob.key));
+        input.setAttribute('aria-invalid', 'false');
+      }
+      const err = document.getElementById(`${knob.id}-error`);
+      if (err) err.hidden = true;
     }
-    emit();
+    paramsChanged();
   });
   details.append(reset);
   return details;
 }
+
+/**
+ * The accepted range of every knob, exported so a shared permalink is validated
+ * against exactly the same limits the controls enforce. A URL is untrusted
+ * input: an rhoSteps of 1e12 arriving that way would hang the tab just as surely
+ * as one typed in.
+ */
+export const PARAM_LIMITS: Record<string, { min: number; max: number }> = Object.fromEntries(
+  KNOBS.map((k) => [k.key, { min: k.min, max: k.max }])
+);
 
 function currentValue(key: Knob['key']): number {
   return key === 'capMs' ? state.capMs : state.params[key];

@@ -6,6 +6,7 @@ import {
   largestPrimeFactor,
   millerRabin,
   nextPrime,
+  PSI,
   randomPrime,
   safePrime,
   smoothMinusOnePrime,
@@ -29,6 +30,37 @@ describe('Miller-Rabin', () => {
   it('rejects strong pseudoprimes to the first few bases', () => {
     // 3215031751 is a strong pseudoprime to bases 2, 3, 5 and 7 at once.
     expect(isProbablePrime(3215031751n)).toBe(false);
+  });
+
+  /**
+   * The base COUNT and the deterministic LIMIT are two halves of one theorem, and
+   * nothing else in this suite can tell them apart: every ordinary prime and every
+   * ordinary composite agrees under twelve bases and under thirteen. psi_12 is the
+   * exact number that does not — it is composite, it is a strong pseudoprime to all
+   * twelve of the first twelve prime bases, and it sits BELOW the thirteen-base
+   * bound. With base 41 missing, this returned {prime: true, deterministic: true}
+   * and the verifier certified a composite as a prime factor while claiming proof.
+   */
+  it('rejects psi_12, the composite that twelve bases cannot see', () => {
+    const v = millerRabin(PSI[12]);
+    expect(v.prime).toBe(false);
+    expect(PSI[12]).toBeLessThan(3317044064679887385961981n);
+    // It really is a strong pseudoprime to the first twelve: every base below 41
+    // must fail to expose it, or this test is passing for the wrong reason.
+    expect(v.deterministic).toBe(true);
+    expect(v.bases).toBe(13);
+  });
+
+  it('the deterministic limit is exactly the bound for the base set it ships', () => {
+    // psi_k is the smallest composite the first k prime bases all miss, so a set of
+    // k bases is proven only BELOW psi_k. If someone adds or removes a base without
+    // moving the limit, this fails.
+    const v = millerRabin(PSI[13]);
+    expect(v.prime).toBe(false);
+    // psi_13 is not strictly below the limit, so the verdict is honestly
+    // reported as probabilistic rather than proven.
+    expect(v.deterministic).toBe(false);
+    expect(millerRabin(PSI[13] - 2n).deterministic).toBe(true);
   });
 
   it('marks the deterministic range as deterministic and beyond it as not', () => {

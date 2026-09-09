@@ -10,6 +10,17 @@ export const TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'];
 export const NARROW = { width: 380, height: 800 };
 
 /**
+ * The width SC 1.4.10 actually specifies.
+ *
+ * The gate drove 380px for its whole first release, and 380 is not the
+ * criterion -- Reflow is written at 320 CSS px, which is 400% zoom on a 1280px
+ * viewport. Two real overflow defects lived in the gap and were invisible at
+ * 380: a `minmax(20rem, 1fr)` grid track that cannot fit, and an SVG falling
+ * back to its 300px default object size inside a narrower card.
+ */
+export const REFLOW = { width: 320, height: 800 };
+
+/**
  * Shared machinery for the WCAG gate.
  *
  * Five rules govern everything here, and each one corrects something the gate
@@ -446,6 +457,69 @@ export async function expectNoInvisibleFocusTargets(page: Page, label: string): 
 }
 
 /**
+ * WCAG 2.2 SC 2.5.8 Target Size (Minimum), Level AA: 24 x 24 CSS pixels.
+ *
+ * axe has no rule for it, so nothing in this gate could see it, and a `summary`
+ * element shipped at 22.32px tall on every disclosure on the page. Measured
+ * from the rendered box rather than computed from the stylesheet, because
+ * padding, line-height and border interact and the arithmetic is exactly the
+ * part people get wrong.
+ *
+ * The exceptions the criterion itself allows are honoured, and each one is
+ * named rather than being a blanket skip: a control in a sentence of text
+ * (Inline), one whose function is duplicated by another control on the same
+ * page (Equivalent), and one the user agent draws and the page does not style
+ * (User agent control).
+ */
+export async function expectTargetSizes(page: Page, label: string): Promise<void> {
+  const small = await page.evaluate(() => {
+    const SELECTOR = 'button, select, summary, input:not([type="hidden"]), textarea, a[href]';
+    const out: string[] = [];
+    for (const el of Array.from(document.querySelectorAll<HTMLElement>(SELECTOR))) {
+      if (!el.checkVisibility?.({ checkVisibilityCSS: true })) continue;
+      // Inline exception: a link inside a run of prose is exempt by SC 2.5.8.
+      if (el.tagName === 'A') {
+        const parent = el.parentElement;
+        const inSentence =
+          parent !== null && (parent.textContent ?? '').trim().length > (el.textContent ?? '').trim().length + 8;
+        if (inSentence) continue;
+      }
+      const r = el.getBoundingClientRect();
+      if (r.width === 0 && r.height === 0) continue;
+      if (r.width >= 24 && r.height >= 24) continue;
+      out.push(
+        `${el.tagName.toLowerCase()}${el.id ? '#' + el.id : ''}` +
+          `${el.className ? '.' + String(el.className).trim().split(/\s+/).join('.') : ''}` +
+          ` ${Math.round(r.width)}x${Math.round(r.height)}`
+      );
+    }
+    return Array.from(new Set(out));
+  });
+  expect(small, `controls below the 24x24 minimum target size in state: ${label}`).toEqual([]);
+}
+
+/**
+ * Every data chart must point at the numbers behind it.
+ *
+ * `chartTable()` associates a chart with its disclosure via `aria-details`, but
+ * the association is made by object identity between the series array passed to
+ * `logChart` and the one passed to `chartTable`. That is a silent failure mode:
+ * get it wrong and the attribute simply never appears, with no type error and
+ * no visual change. This is the only thing that would notice.
+ */
+export async function expectChartsHaveData(page: Page, label: string): Promise<void> {
+  const orphans = await page.evaluate(() =>
+    Array.from(document.querySelectorAll('svg[role="img"]'))
+      .filter((svg) => {
+        const id = svg.getAttribute('aria-details');
+        return !id || !document.getElementById(id);
+      })
+      .map((svg) => svg.getAttribute('aria-label')?.slice(0, 60) ?? '(no label)')
+  );
+  expect(orphans, `charts with no reachable data table in state: ${label}`).toEqual([]);
+}
+
+/**
  * When `A11Y_COLLECT` is set, `scan` records failures instead of throwing.
  *
  * A strict gate reports the first failing assertion in the first failing state
@@ -671,6 +745,8 @@ export async function scan(page: Page, label: string): Promise<void> {
   await soft(() => expectScrollersReachable(page, label));
   await soft(() => expectNoInvisibleFocusTargets(page, label));
   await soft(() => expectNoHorizontalOverflow(page, label));
+  await soft(() => expectTargetSizes(page, label));
+  await soft(() => expectChartsHaveData(page, label));
 }
 
 // ── The drive ───────────────────────────────────────────────────────────────
@@ -718,7 +794,7 @@ export async function driveAllStates(page: Page, theme: string): Promise<void> {
   const scanAt = (s: string): Promise<void> => scan(page, `${theme} / ${s}`);
   const row = (algo: string) => page.locator(`.race-row[data-algorithm="${algo}"]`);
   const runRow = async (algo: string): Promise<void> => {
-    await row(algo).getByRole('button', { name: 'Run' }).click();
+    await row(algo).getByRole('button', { name: /^Run( again)?$/ }).click();
     await expect(row(algo).locator('.race-time')).toBeVisible({ timeout: 120_000 });
   };
 
@@ -767,6 +843,22 @@ export async function driveAllStates(page: Page, theme: string): Promise<void> {
   await expect(page.locator('#shape-box .verdict-fail')).toContainText('digits');
   await scanAt('Factor N: an over-long N — the digit-ceiling failure verdict');
 
+  // ── A cancelled row: its own state, never scanned before ────────────────
+  // Reached the way a reader reaches it, and it paints a pill and two lines of
+  // explanation that exist in no other state.
+  await page.locator('#n-input').fill('168087653461343538520835907316479739447');
+  await page.getByRole('button', { name: /Run all seven/ }).click();
+  await expect(page.locator('.race-row[data-state="busy"]').first()).toBeVisible({ timeout: 60_000 });
+  await page.locator('#cancel').click();
+  await expect(page.locator('.race-row[data-state="cancelled"]').first()).toBeVisible();
+  await scanAt('Factor N: a cancelled row — the CANCELLED pill and its last-progress line');
+
+  // ── The intro disclosure ────────────────────────────────────────────────
+  await page.locator('#panel-race details.intro-more > summary').click();
+  await expect(page.locator('#panel-race details.intro-more[open]')).toHaveCount(1);
+  await scanAt('Factor N: the "why that matters" disclosure open');
+  await page.locator('#panel-race details.intro-more > summary').click();
+
   // ── The parameters disclosure, opened the way a reader opens it ─────────
   await page.locator('#n-input').fill('1640344808434621');
   await expect(page.locator('#shape-box')).toContainText('51-bit composite');
@@ -781,10 +873,18 @@ export async function driveAllStates(page: Page, theme: string): Promise<void> {
   await page.getByRole('button', { name: 'Reset to defaults' }).click();
   await expect(page.locator('#p-b1')).toHaveValue('10000');
 
+  // ── The permalink control in its just-clicked state ─────────────────────
+  await page.getByRole('button', { name: 'Copy permalink' }).click();
+  await expect(page.getByRole('button', { name: /Copied|Copy failed/ })).toBeVisible();
+  await scanAt('Factor N: the permalink button in its just-clicked state');
+
   // ── The quadratic sieve, which renders the widest content on the page ───
   await runRow('qs');
   await expect(row('qs')).toHaveAttribute('data-state', 'pass');
   await scanAt('Factor N: the sieve wins — the longest status text on the board');
+
+  // ── An export control alongside a completed row ─────────────────────────
+  await expect(row('qs').getByRole('button', { name: 'Export run' })).toBeVisible();
 
   // ── Recursive factorization, and its table ──────────────────────────────
   await page.locator('#n-input').fill('446536200662911111');
@@ -875,7 +975,7 @@ export async function driveAllStates(page: Page, theme: string): Promise<void> {
   await scanAt('a shared top bar control hovered');
 
   await openTab(page, /Factor N/, '#panel-race');
-  await page.getByRole('button', { name: 'Race all seven' }).hover();
+  await page.getByRole('button', { name: /Run all seven/ }).hover();
   await scanAt('a primary button hovered');
 
   // ── Focus rings on the controls that take them ──────────────────────────

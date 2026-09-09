@@ -28,9 +28,19 @@ approximated, and no result is displayed until an independent verifier has multi
 factors back to `N` and put each through Miller–Rabin.
 
 The point the lab exists to make: RSA key generation is not a list of arbitrary requirements. Each
-rule closes exactly one of these doors. And **none of them does anything against Shor**, because
-Shor exploits no structure of `N` at all — which is why "use safe primes" and "use bigger primes"
-are answers to the classical list and not to the quantum one.
+rule closes exactly one of these doors. And **none of them does anything against Shor** — but the
+reason has to be stated carefully, because the easy version of it is false.
+
+Shor does not exploit "no structure": it exploits the multiplicative order of `a` modulo `N`, and
+the whole algorithm is built on that. What it needs no part of is an *accidental* weakness in how
+`p` and `q` were chosen. Most of the classical methods here wait for a property only *some* moduli
+have — a small factor, a narrow `|p − q|`, a smooth `p ± 1` — and a key-generation rule can take
+those off the board outright. The sieves are the exception, and the instructive one: the quadratic
+sieve needs no accidental weakness either, which is precisely why the only rule that touches it is
+"make `N` bigger". Shor sits with the sieves on that first distinction and alone on the second —
+the period of `x ↦ aˣ mod N` is a property every modulus has, so there is nothing to generate your
+way out of, and unlike the sieves the cost stays polynomial as `N` grows. Bigger primes buy you
+more of Shor's own polynomial; they do not remove it.
 
 **Security model:** none. This is a teaching demo. It factors numbers small enough to finish in a
 browser tab while you watch, which is many orders of magnitude below an RSA modulus. **Not
@@ -49,6 +59,24 @@ production cryptography.**
   rests on random bases.
 - Timings are real `performance.now()` measurements of your browser on your machine. They are
   never extrapolated upward to a larger size.
+
+### Provenance — every result is attributable
+
+A number on this board is a claim, and a claim you cannot trace back to its inputs is an
+anecdote. So:
+
+- Every run is dispatched with an immutable **experiment context** — the `N`, every bound, the
+  wall-clock cap, a 128-bit **seed**, and the build that produced it. The context comes back with
+  the result, and a completion is admitted only if its context still describes the live
+  experiment.
+- **Copy permalink** puts the experiment in the URL. **Export run** writes a JSON record with the
+  inputs, the seed, the measured counters, the verifier's own verdict, the browser, and the
+  commit the page was built from.
+- Changing `N` or any bound **cancels the work in flight** and says so, rather than letting a
+  superseded search burn CPU for a result that can only be discarded.
+- The seed reproduces the **search**. It reproduces the **outcome** only for a run that finished
+  before its wall-clock cap — a capped run stops somewhere else on different hardware, and the
+  export says which of the two it was rather than promising determinism it cannot deliver.
 
 ### The negative claim
 
@@ -168,9 +196,10 @@ npm run dev        # http://localhost:5173
 ## Build & Verify
 
 ```bash
-npm test           # 112 unit tests (Vitest)
+npm test           # the unit suite (Vitest): BigInt core, primality, every
+                   # algorithm, the generator, the verifier, and the run lifecycle
 npm run build      # tsc --noEmit, then vite build
-npm run test:claims  # 20 claims tests, desktop and mobile viewports
+npm run test:claims  # the claims suite, on every configured browser project
 npm run test:a11y  # axe-core WCAG 2.1 A/AA gate, desktop and 380px
 ```
 
@@ -190,8 +219,12 @@ npm run test:a11y  # axe-core WCAG 2.1 A/AA gate, desktop and 380px
   the file and asserts its import list to keep it that way — a bug in an algorithm must not also be
   the thing that blesses its own output.
 - **The a11y gate** drives the real controls through every state the lab renders — including both
-  input failure branches, the parameters disclosure out of range, the negative-claim fixture and
-  three hover states — and scans each one, at desktop and phone width.
+  input failure branches, the parameters disclosure out of range, a cancelled row, the
+  negative-claim fixture and three hover states — and scans each one, at desktop and phone width.
+- **Lifecycle tests** (`src/ui/state.test.ts`, `src/ui/runner.test.ts`) cover the parts that have
+  nothing to do with mathematics and everything to do with truthfulness: batch cancellation,
+  editing `N` or a bound mid-run, superseded progress messages, the queue, and the difference
+  between a cancellation and a failure.
 
 ### Invariants the architecture embodies
 
@@ -202,8 +235,38 @@ npm run test:a11y  # axe-core WCAG 2.1 A/AA gate, desktop and 380px
 | **I3** | Timing is real `performance.now()`, shown with the size it was measured at, never extrapolated. |
 | **I4** | The weak-`N` generator runs the targeted method and the methods that must fail before returning a candidate. |
 | **I5** | A trivial `gcd` from a GF(2) dependency is reported as a retry, with a count, not hidden. |
+| **I6** | A result may only be recorded against the experiment that produced it. A completion whose `N`, bounds or cap have changed is discarded and counted, never re-attributed. |
+| **I7** | Cancellation cancels: nothing running or queued may publish a result afterwards, and a cancelled run says so rather than reverting to "not run yet". A failure is a distinct state from a cancellation. |
 
 ---
+
+## What was wrong, and what it cost
+
+This lab was reviewed against a gold standard after its first release. Four defects are worth
+recording, because each one was invisible to a green test suite:
+
+- **The verifier certified a composite as prime.** `DETERMINISTIC_BASES` held the first *twelve*
+  prime bases while `DETERMINISTIC_LIMIT` was the bound for the first *thirteen*. The smallest
+  number that exposes it is ψ₁₂ = 318,665,857,834,031,151,167,461 — composite, a strong
+  pseudoprime to all twelve, and below the stated bound. `millerRabin(ψ₁₂)` returned
+  `{prime: true, deterministic: true}`: invariant I1 failing at the root, while claiming proof.
+  Every ordinary input agreed under twelve bases and under thirteen, which is why nothing caught
+  it. Both ψ values are now pinned in the tests.
+- **A run could be attributed to the wrong `N`.** Results were verified against the live `state.n`
+  at the moment the promise resolved, not against the `N` the run was given. Start Pollard rho on
+  a 127-bit modulus, change `N` to 15, and the board reported "rho — GAVE UP: no collision in
+  50,000,000 iterations" underneath `N` = 15. The verifier could not see it: it refutes a
+  mismatched *product*, and a give-up has no product — so the one verdict class it could not
+  check was the one this lab teaches with.
+- **Cancel did not cancel.** It terminated the running worker; the loop then launched every
+  remaining method. Measured: four rows published results after cancellation, including a PASS
+  verdict twenty seconds later.
+- **Williams p+1 attributed its wins to the wrong group.** `V_k(a,1)` lives in a group of order
+  `p + 1` only when `a² − 4` is a quadratic non-residue mod `p`; otherwise it is Pollard's p−1 in
+  disguise. Reporting `p + 1` unconditionally made the page print "p + 1 = 21998936388, whose
+  largest prime factor is 55021 — under the bound 10,000", a sentence contradicted by its own two
+  numbers. The Legendre symbol is now computed once `p` is known, and the evidence carries a
+  `withinBound` flag so no renderer can assert a relation the numbers do not support.
 
 ## References
 

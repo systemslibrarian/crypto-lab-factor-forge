@@ -8,8 +8,37 @@
  * factor. Cost tracks the SMALLEST factor, not the size of N: that is the
  * metric this lab puts on screen.
  *
- * Brent's variant replaces Floyd's two-pointer walk with a doubling stride and
- * batches the gcds, roughly a 25% saving in f-evaluations.
+ * Brent's variant replaces Floyd's two-pointer walk with a doubling stride --
+ * one evaluation of f per step instead of Floyd's three -- and batches the
+ * differences into a single product so one gcd covers up to 128 steps (the
+ * early rounds cover fewer, since the batch is capped by the stride). Brent reports
+ * the combined method as about 25% faster than Pollard's original.
+ *
+ * WHAT RHO DOES NOT DO: stall on a perfect square. That claim was in this
+ * repository -- in tree.ts, in bigint.ts and on the race board -- and it is
+ * wrong. Take N = p^2. Reduced mod p the iteration is still x <- x^2 + (c mod
+ * p), the identical recurrence on the identical state space, so the walk
+ * collides mod p on the ordinary birthday schedule of about sqrt(p) terms --
+ * nothing about the second factor being equal to the first touches that. The
+ * difference between the two colliding terms is then a multiple of p, and
+ * gcd(x_i - x_j, p^2) returns p unless the two terms happen to agree mod p^2 as
+ * well. They rarely do: a collision mod p is one coincidence among about p
+ * possibilities, and a simultaneous collision mod p^2 is a second independent
+ * coincidence among about p more, so the first collision is overwhelmingly a
+ * clean one. Measured here on p = 1000003, N = p^2 splits in about 1,700
+ * iterations against sqrt(p) = 1000, first c, no restart -- and on p =
+ * 15485863, 32452843, 179424673 and 2147483647 likewise, every one on the first
+ * c with no restart.
+ *
+ * What is true of N = p^2 is only what is true of every N: rho's cost is set by
+ * the smallest prime factor, and p^2 has the largest smallest-factor any N of
+ * its size can have, p = sqrt(N), so it costs N^(1/4) -- exactly what an N with
+ * two equal-SIZE primes costs, which is the shape RSA deliberately uses. The
+ * genuine failure modes are the one this file reports, sqrt(p) not fitting
+ * inside the iteration cap, and the transient one where the batched product is
+ * divisible by N itself so the gcd comes back as N -- which the backtrack
+ * below, and then a fresh c, recover from. Perfect powers are peeled in tree.ts
+ * for a different reason; see there.
  */
 
 import { abs, bitLength, gcd, isqrt, randomInRange } from './bigint';
@@ -31,7 +60,8 @@ export function factorRho(n: bigint, params: Params, budget: Budget): FactorOutc
         steps: [
           {
             label: 'N is even',
-            detail: 'rho needs an odd N; the factor 2 is peeled off directly.',
+            detail:
+              'An even N is split by inspection: the walk never starts. This is a shortcut past a trivial case, not a limitation of rho.',
             pivotal: true,
           },
         ],
@@ -97,7 +127,7 @@ export function factorRho(n: bigint, params: Params, budget: Budget): FactorOutc
         if (iterations > params.rhoSteps) {
           steps.push({
             label: 'Step cap reached',
-            detail: `No collision within ${params.rhoSteps.toLocaleString()} iterations. rho has not proved anything about N -- it simply has not found a cycle yet.`,
+            detail: `No usable collision within ${params.rhoSteps.toLocaleString()} iterations. rho has not proved anything about N -- the walk is still going, and the only thing that failing here suggests is that the smallest factor is large enough for sqrt(p) to exceed the cap.`,
           });
           return gaveUp(
             'rho',
@@ -142,7 +172,7 @@ export function factorRho(n: bigint, params: Params, budget: Budget): FactorOutc
       });
       steps.push({
         label: 'Read the cost',
-        detail: `sqrt(p) is about ${isqrt(p)}, and the walk took ${iterations.toLocaleString()} iterations. The size of N never entered into it.`,
+        detail: `sqrt(p) is about ${isqrt(p)}, and the walk took ${iterations.toLocaleString()} iterations. The size of N sets the cost of each multiplication, but not the NUMBER of them: that is fixed by the smallest factor alone.`,
         values: [
           { key: 'sqrt(p)', value: String(isqrt(p)) },
           { key: 'sqrt(N)', value: String(isqrt(n)) },

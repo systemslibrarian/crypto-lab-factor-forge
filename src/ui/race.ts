@@ -12,10 +12,28 @@ import { ALGORITHM_ORDER } from '../factor/registry';
 import { VECTORS } from '../factor/vectors';
 import { describeShape } from '../verify/verify';
 import { treeLeaves, type TreeNode } from '../factor/tree';
+import { isProbablePrime } from '../factor/primality';
 import { clear, el, groupDigits, table, verdict } from './dom';
+import { exportRun, permalinkFor } from './provenance';
 import { paramsCard } from './params';
 import type { Runner } from './runner';
-import { recordRun, setN, state, emit } from './state';
+import {
+  anyRunning,
+  batchIsCurrent,
+  cancelAll,
+  makeContext,
+  markBusy,
+  markCancelled,
+  markError,
+  markProgress,
+  recordRun,
+  rowOf,
+  setN,
+  startBatch,
+  state,
+  emit,
+  type RunContext,
+} from './state';
 import { whySentence } from './why';
 
 const MAX_DIGITS = 40;
@@ -24,22 +42,34 @@ const MAX_DIGITS = 40;
 export function mountRacePanel(root: HTMLElement, runner: Runner): () => void {
   clear(root);
 
-  root.append(
-    el(
-      'div',
-      { class: 'intro' },
-      el('h2', { text: 'Factoring is not one problem' }),
-      el('p', {
-        text:
-          'There is no single "factoring algorithm". Every classical method below hunts for one specific weakness in N: a small factor, two primes that sit close together, a smooth p-1 or p+1, an elliptic curve that happens to have smooth order — or, for the quadratic sieve, no weakness at all. Run them side by side and the differences become the whole point.',
-      }),
-      el('p', {
-        class: 'small muted',
-        text:
-          'Everything here is real BigInt arithmetic running in your browser at teaching sizes. Nothing is simulated, and nothing here threatens a real RSA key — see the honesty note at the bottom of this panel.',
-      })
-    )
+  // One sentence of setup, then the controls. The full framing is a disclosure
+  // directly beneath: at 380px the old two-paragraph intro plus the input card
+  // put the primary action 1,658px down the page, which is two screens of
+  // reading before a learner can do anything.
+  const intro = el('div', { class: 'intro' });
+  intro.append(
+    el('h2', { text: 'Factoring is not one problem' }),
+    el('p', {
+      text:
+        'Seven methods, one N. Each hunts a different weakness — and which one wins tells you what is wrong with N.',
+    })
   );
+  const introMore = el('details', { class: 'intro-more' });
+  introMore.append(el('summary', { text: 'Why that matters' }));
+  introMore.append(
+    el('p', {
+      class: 'small',
+      text:
+        'There is no single "factoring algorithm". Every classical method below hunts for one specific weakness in N: a small factor, two primes that sit close together, a smooth p-1 or p+1, an elliptic curve that happens to have smooth order — or, for the quadratic sieve, no weakness at all. Run them side by side and the differences become the whole point.',
+    }),
+    el('p', {
+      class: 'small muted',
+      text:
+        'Everything here is real BigInt arithmetic running in your browser at teaching sizes. Nothing is simulated, and nothing here threatens a real RSA key — see the honesty note at the bottom of this panel.',
+    })
+  );
+  intro.append(introMore);
+  root.append(intro);
 
   // ── Input ──────────────────────────────────────────────────────────────
   const card = el('div', { class: 'card' });
@@ -76,17 +106,36 @@ export function mountRacePanel(root: HTMLElement, runner: Runner): () => void {
     })
   );
 
-  card.append(presetWrap, nWrap, paramsCard());
+  card.append(presetWrap, nWrap);
 
   const shapeBox = el('div', { id: 'shape-box', role: 'status', 'aria-live': 'polite' });
   card.append(shapeBox);
 
   const controls = el('div', { class: 'row', style: 'margin-top:.7rem' });
-  const runAll = el('button', { class: 'btn btn-primary', id: 'run-all', type: 'button' }, 'Race all seven');
+  // NOT "Race": the methods run one at a time, deliberately, so the wall-clock
+  // numbers on the board are comparable rather than seven jobs fighting over
+  // the same cores. Calling it a race implied a concurrency this does not have.
+  const runAll = el(
+    'button',
+    { class: 'btn btn-primary', id: 'run-all', type: 'button' },
+    'Run all seven, one at a time'
+  );
   const cancel = el('button', { class: 'btn', id: 'cancel', type: 'button' }, 'Cancel');
   cancel.setAttribute('disabled', 'true');
-  controls.append(runAll, cancel);
+  const permalink = el('button', { class: 'btn', id: 'permalink', type: 'button' }, 'Copy permalink');
+  controls.append(runAll, cancel, permalink);
   card.append(controls);
+  card.append(
+    el('p', {
+      class: 'small muted',
+      id: 'sequential-note',
+      text:
+        'They run sequentially, never in parallel: a shared core would make the milliseconds meaningless. Cancel stops the one that is running and everything still queued behind it.',
+    })
+  );
+  const workerNote = el('div', { id: 'worker-note' });
+  card.append(workerNote);
+  card.append(paramsCard());
   root.append(card);
 
   // ── Board ──────────────────────────────────────────────────────────────
@@ -146,12 +195,18 @@ export function mountRacePanel(root: HTMLElement, runner: Runner): () => void {
   });
 
   runAll.addEventListener('click', () => {
-    void raceAll(runner, runAll, cancel);
+    void runAllSequentially(runner);
   });
   cancel.addEventListener('click', () => {
+    // Order matters. Invalidate the batch FIRST so nothing queued can start,
+    // then terminate the worker. Reversed, the loop's next iteration can slip
+    // in between and dispatch a fresh job onto a rebuilt worker.
+    cancelAll();
     runner.cancel();
-    state.running.clear();
     emit();
+  });
+  permalink.addEventListener('click', () => {
+    void copyPermalink(permalink);
   });
 
   applyN(nInput, shapeBox);
@@ -161,10 +216,48 @@ export function mountRacePanel(root: HTMLElement, runner: Runner): () => void {
   // only the board re-renders, so a state change never eats an input's caret.
   return () => {
     renderBoard(board, runner);
-    const busy = state.running.size > 0;
+    const busy = anyRunning();
     if (busy) cancel.removeAttribute('disabled');
     else cancel.setAttribute('disabled', 'true');
+    if (busy) runAll.setAttribute('disabled', 'true');
+    else runAll.removeAttribute('disabled');
+    renderWorkerNote(workerNote, runner);
   };
+}
+
+/**
+ * If module workers are unavailable the maths still runs, on the main thread —
+ * but that is a different product and the page says so: a long run freezes the
+ * tab, and Cancel cannot stop a BigInt loop that has already entered.
+ */
+function renderWorkerNote(host: HTMLElement, runner: Runner): void {
+  const wanted = runner.inlineOnly ? runner.fallbackReason : null;
+  if (state.workerNotice === wanted) return;
+  state.workerNotice = wanted;
+  clear(host);
+  if (!wanted) return;
+  host.append(
+    verdict(
+      'alarm',
+      'Running on the main thread — Cancel cannot stop a run here.',
+      `${wanted}. The arithmetic is unchanged and the results are still real, but a long run will freeze this tab until it finishes or hits its wall-clock cap.`
+    )
+  );
+}
+
+async function copyPermalink(btn: HTMLElement): Promise<void> {
+  const url = permalinkFor();
+  history.replaceState(null, '', url);
+  const label = btn.textContent ?? 'Copy permalink';
+  try {
+    await navigator.clipboard.writeText(url);
+    btn.textContent = 'Copied';
+  } catch {
+    btn.textContent = 'Copy failed — the URL bar now holds it';
+  }
+  setTimeout(() => {
+    btn.textContent = label;
+  }, 1600);
 }
 
 function applyN(input: HTMLTextAreaElement, shapeBox: HTMLElement): void {
@@ -209,7 +302,7 @@ function applyN(input: HTMLTextAreaElement, shapeBox: HTMLElement): void {
       verdict(
         'alarm',
         `N is a perfect power: ${shape.perfectPower.base}^${shape.perfectPower.exponent}.`,
-        'Worth knowing before you start — Pollard rho famously stalls on a perfect square, because there is no second prime for the walk to collide against.'
+        'Worth knowing before you start — for N = p^2 the walk still collides modulo p on the usual sqrt(p) schedule, but the split it returns is p x p rather than two distinct primes. The recursion below peels a perfect power directly instead, because knowing the shape is cheaper than searching for it.'
       )
     );
   }
@@ -228,11 +321,24 @@ function applyN(input: HTMLTextAreaElement, shapeBox: HTMLElement): void {
 function renderBoard(board: HTMLElement, runner: Runner): void {
   clear(board);
   if (state.retired) {
+    const r = state.retired;
+    const parts: string[] = [];
+    if (r.completed) parts.push(`${r.completed} completed verdict(s)`);
+    if (r.cancelled) parts.push(`${r.cancelled} run(s) still in flight`);
     board.append(
       el('div', {
         class: 'retired-note small',
         id: 'retired-note',
-        text: `Results retired: N changed, so all ${state.retired.count} verdict(s) for ${state.retired.from} were discarded. A verdict belongs to the N it was computed for.`,
+        text: `Results retired: the experiment changed, so ${parts.join(' and ')} for ${r.from} were discarded. A verdict belongs to the N and the bounds it was computed under.`,
+      })
+    );
+  }
+  if (state.discarded > 0) {
+    board.append(
+      el('div', {
+        class: 'retired-note small',
+        id: 'discarded-note',
+        text: `${state.discarded} completion(s) arrived after their experiment had already changed and were discarded rather than attributed to the current one.`,
       })
     );
   }
@@ -243,9 +349,8 @@ function renderBoard(board: HTMLElement, runner: Runner): void {
 
 function raceRow(id: AlgorithmId, runner: Runner): HTMLElement {
   const meta = algorithmMeta(id);
-  const record = state.runs.get(id);
-  const running = state.running.has(id);
   const row = el('div', { class: 'race-row', role: 'listitem', 'data-algorithm': id });
+  const state_ = rowOf(id);
 
   const name = el('div', { class: 'race-name' });
   name.append(document.createTextNode(meta.name));
@@ -253,97 +358,199 @@ function raceRow(id: AlgorithmId, runner: Runner): HTMLElement {
   row.append(name);
 
   const status = el('div', { class: 'race-status' });
-  if (running) {
-    row.dataset.state = 'busy';
-    status.append(el('span', { class: 'progress', id: `progress-${id}`, text: 'running…' }));
-  } else if (!record) {
-    row.dataset.state = 'idle';
-    status.append(el('span', { class: 'muted', text: 'not run yet' }));
-  } else {
-    const v = record.verdict;
-    if (v.status === 'verified' && v.fullyFactored) {
-      row.dataset.state = 'pass';
+  const actions = el('div', { class: 'race-actions' });
+
+  switch (state_.kind) {
+    case 'busy': {
+      row.dataset.state = 'busy';
+      status.append(el('span', { class: 'progress', id: `progress-${id}`, text: state_.note }));
+      break;
+    }
+    case 'idle': {
+      row.dataset.state = 'idle';
+      status.append(el('span', { class: 'muted', text: 'not run yet' }));
+      break;
+    }
+    case 'cancelled': {
+      // A cancelled run does NOT revert to "not run yet". It happened, it was
+      // stopped, and the page says where it had got to.
+      row.dataset.state = 'cancelled';
       status.append(
-        el('span', { class: 'pill pill-ok', text: '✓ FACTORED — verified' }),
-        el('div', { class: 'small', text: `p = ${record.outcome.p}, q = ${record.outcome.q}` }),
-        el('div', { class: 'small muted', text: whySentence(record.outcome.trace) })
+        el('span', { class: 'pill', text: '⊘ CANCELLED' }),
+        el('div', { class: 'small', text: `${state_.reason}. No partial result is reported: the worker was terminated, so there is nothing to verify.` }),
+        el('div', { class: 'small muted', text: state_.note ? `Last progress seen: ${state_.note}` : 'Stopped before it reported any progress.' })
       );
-    } else if (v.status === 'verified') {
-      row.dataset.state = 'alarm';
+      break;
+    }
+    case 'error': {
+      row.dataset.state = 'error';
       status.append(
-        el('span', { class: 'pill pill-bad', text: '⚠ PARTIAL SPLIT' }),
-        el('div', { class: 'small', text: v.reason })
+        el('span', { class: 'pill pill-bad', text: '! EXECUTION ERROR' }),
+        el('div', { class: 'small', text: state_.message }),
+        el('div', { class: 'small muted', text: 'This is a failure of the page, not a result about N. Nothing is claimed.' })
       );
-    } else if (v.status === 'refuted') {
-      row.dataset.state = 'fail';
-      status.append(
-        el('span', { class: 'pill pill-bad', text: '✗ REFUTED by the verifier' }),
-        el('div', { class: 'small', text: v.reason })
-      );
-    } else {
-      row.dataset.state = 'fail';
-      const g = record.outcome.trace.gaveUp;
-      status.append(
-        el('span', { class: 'pill', text: '— GAVE UP' }),
-        el('div', { class: 'small', text: g ? `${g.reason} (at ${g.at})` : 'no factor found' })
-      );
+      break;
+    }
+    case 'done': {
+      const record = state_.record;
+      const v = record.verdict;
+      if (v.status === 'verified' && v.fullyFactored) {
+        row.dataset.state = 'pass';
+        status.append(
+          el('span', { class: 'pill pill-ok', text: '✓ FACTORED — verified' }),
+          el('div', { class: 'small', text: `p = ${record.outcome.p}, q = ${record.outcome.q}` }),
+          el('div', { class: 'small muted', text: whySentence(record.outcome.trace) })
+        );
+      } else if (v.status === 'verified') {
+        row.dataset.state = 'alarm';
+        status.append(
+          el('span', { class: 'pill pill-bad', text: '⚠ PARTIAL SPLIT' }),
+          el('div', { class: 'small', text: v.reason })
+        );
+      } else if (v.status === 'refuted') {
+        row.dataset.state = 'fail';
+        status.append(
+          el('span', { class: 'pill pill-bad', text: '✗ REFUTED by the verifier' }),
+          el('div', { class: 'small', text: v.reason })
+        );
+      } else {
+        row.dataset.state = 'fail';
+        const g = record.outcome.trace.gaveUp;
+        status.append(
+          el('span', { class: 'pill', text: '— GAVE UP' }),
+          el('div', { class: 'small', text: g ? `${g.reason} (at ${g.at})` : 'no factor found' })
+        );
+      }
+      break;
     }
   }
   row.append(status);
 
-  const actions = el('div', { class: 'race-actions' });
-  const btn = el('button', { class: 'btn', type: 'button', 'data-run': id }, running ? 'Running…' : 'Run');
-  if (running) btn.setAttribute('disabled', 'true');
+  const busy = state_.kind === 'busy';
+  const btn = el(
+    'button',
+    { class: 'btn', type: 'button', 'data-run': id },
+    busy ? 'Running…' : state_.kind === 'idle' ? 'Run' : 'Run again'
+  );
+  if (busy) btn.setAttribute('disabled', 'true');
   btn.addEventListener('click', () => {
     void runOne(runner, id);
   });
   actions.append(btn);
-  if (record) {
-    actions.append(el('span', { class: 'race-time', text: `${record.outcome.ms.toFixed(1)} ms` }));
+
+  if (state_.kind === 'done') {
+    const rec = state_.record;
+    // A capped run's milliseconds are the CAP, not a measurement of the work.
+    // Rendering both in the same column, same units, same style made a timeout
+    // read as a timing. It is labelled instead.
+    const capped = rec.outcome.trace.gaveUp?.reason.includes('time cap') ?? false;
+    actions.append(
+      el('span', {
+        class: `race-time${capped ? ' race-time-capped' : ''}`,
+        title: capped
+          ? 'This run hit its wall-clock cap; the number is the cap, not how long the work takes.'
+          : 'Measured with performance.now() in this browser.',
+        text: capped ? `cap ${rec.outcome.ms.toFixed(0)} ms` : `${rec.outcome.ms.toFixed(1)} ms`,
+      })
+    );
+    const exportBtn = el('button', { class: 'btn btn-tiny', type: 'button' }, 'Export run');
+    exportBtn.addEventListener('click', () => exportRun(rec));
+    actions.append(exportBtn);
   }
   row.append(actions);
   return row;
 }
 
+/**
+ * Recursive factorization.
+ *
+ * Three things here were wrong and all three were the same mistake — judging a
+ * result against the LIVE store instead of against the experiment that produced
+ * it, and judging only the root of a tree instead of the whole tree:
+ *
+ *  - the product was compared against `state.n`, which the user may have changed
+ *    while the recursion ran;
+ *  - `node.stuck` is only the ROOT's stuck flag, so a tree with an unsplit
+ *    composite two levels down rendered a green "N = a x b x c" verdict;
+ *  - nothing checked that the leaves were prime, so a partial factorization
+ *    could be presented as a complete one.
+ */
 async function runTree(runner: Runner, btn: HTMLElement, out: HTMLElement): Promise<void> {
   btn.setAttribute('disabled', 'true');
   clear(out);
   out.append(el('p', { class: 'progress', text: 'Recursing…' }));
-  try {
-    const { root: node, ms } = await runner.tree(state.n, state.params, state.capMs);
-    const leaves = treeLeaves(node);
-    const product = leaves.reduce((acc, v) => acc * BigInt(v), 1n);
-    clear(out);
-    if (node.stuck || product !== state.n) {
-      out.append(
-        verdict(
-          'fail',
-          'Incomplete factorization.',
-          node.stuck ?? 'The leaves do not multiply back to N — reported as a failure, not dressed up as a result.'
-        )
-      );
-    } else {
-      out.append(
-        verdict(
-          'pass',
-          `N = ${leaves.join(' × ')}`,
-          `${leaves.length} prime factors, verified by multiplying back to N. Recursion took ${ms.toFixed(1)} ms in total.`
-        )
-      );
-    }
+  // Snapshot the experiment. Everything below judges against THESE values.
+  const ctx = makeContext('trial');
+  const res = await runner.tree(ctx.n, ctx.params, ctx.capMs);
+  clear(out);
+
+  if (!res.ok) {
     out.append(
-      table(
-        ['Composite', 'Split by', 'Time'],
-        splitRows(node),
-        'Which method split each composite'
+      res.kind === 'cancelled'
+        ? verdict('idle', 'Cancelled.', 'The recursion was stopped; nothing is claimed.')
+        : verdict('fail', 'The recursion could not run.', `${res.message}. This is a failure of the page, not a result about N.`)
+    );
+    btn.removeAttribute('disabled');
+    return;
+  }
+  if (!contextStillCurrent(ctx)) {
+    out.append(
+      verdict(
+        'idle',
+        'Discarded: N changed while this was running.',
+        `That tree was computed for ${ctx.n}, which is no longer the number on screen. Attributing it to the current N would be a false statement, so it is thrown away.`
       )
     );
-  } catch (err) {
-    clear(out);
-    out.append(verdict('fail', 'Recursion failed.', err instanceof Error ? err.message : String(err)));
-  } finally {
     btn.removeAttribute('disabled');
+    return;
   }
+
+  const node = res.root;
+  const leaves = treeLeaves(node);
+  const product = leaves.reduce((acc, v) => acc * BigInt(v), 1n);
+  // The WHOLE tree, not just the root: a stuck composite at any depth means the
+  // factorization is incomplete however green the top looks.
+  const stuck = firstStuck(node);
+  const composite = leaves.find((v) => !isProbablePrime(BigInt(v)));
+
+  if (stuck || product !== ctx.n || composite) {
+    out.append(
+      verdict(
+        'fail',
+        'Incomplete factorization.',
+        stuck ??
+          (composite
+            ? `The leaf ${composite} is composite, so this is a partial split and not a factorization into primes.`
+            : 'The leaves do not multiply back to N — reported as a failure, not dressed up as a result.')
+      )
+    );
+  } else {
+    out.append(
+      verdict(
+        'pass',
+        `N = ${leaves.join(' × ')}`,
+        `${leaves.length} factors, each confirmed prime by Miller-Rabin, and their product recomputed back to N. Recursion took ${res.ms.toFixed(1)} ms in total.`
+      )
+    );
+  }
+  out.append(
+    table(['Composite', 'Split by', 'Time'], splitRows(node), 'Which method split each composite')
+  );
+  btn.removeAttribute('disabled');
+}
+
+/** The first `stuck` reason anywhere in the tree, not just at the root. */
+function firstStuck(node: TreeNode): string | null {
+  if (node.stuck) return node.stuck;
+  for (const c of node.children) {
+    const s = firstStuck(c);
+    if (s) return s;
+  }
+  return null;
+}
+
+function contextStillCurrent(ctx: RunContext): boolean {
+  return ctx.epoch === state.epoch;
 }
 
 function splitRows(node: TreeNode): string[][] {
@@ -357,30 +564,53 @@ function splitRows(node: TreeNode): string[][] {
   return rows;
 }
 
+/**
+ * Run one method against a SNAPSHOT of the current experiment.
+ *
+ * The context is taken before dispatch and travels with the result, so
+ * `recordRun` can verify against the N the run was actually given and refuse a
+ * completion whose experiment has moved on.
+ */
 export async function runOne(runner: Runner, id: AlgorithmId): Promise<void> {
   if (state.n < 2n) return;
-  state.running.add(id);
-  emit();
-  try {
-    const outcome = await runner.factor(id, state.n, state.params, state.capMs, (done, total, note) => {
-      const node = document.getElementById(`progress-${id}`);
-      if (node) node.textContent = total > 0 ? `${note} (${Math.round((done / total) * 100)}%)` : note;
-    });
-    recordRun(outcome);
-  } catch {
-    state.running.delete(id);
-    emit();
+  const ctx = makeContext(id);
+  markBusy(ctx);
+  const res = await runner.factor(id, ctx.n, ctx.params, ctx.capMs, ctx.seed, (done, total, note) => {
+    const text = total > 0 ? `${note} (${Math.round((done / total) * 100)}%)` : note;
+    markProgress(ctx, text);
+    // Repaint just this row's progress line rather than the whole board, and
+    // only if the row still belongs to this run.
+    const row = rowOf(id);
+    if (row.kind !== 'busy' || row.ctx.runId !== ctx.runId) return;
+    const node = document.getElementById(`progress-${id}`);
+    if (node) node.textContent = text;
+  });
+
+  if (res.ok) {
+    recordRun(res.outcome, ctx);
+    return;
   }
+  if (res.kind === 'cancelled') markCancelled(ctx, 'cancelled by you');
+  else markError(ctx, res.message);
 }
 
-async function raceAll(runner: Runner, runBtn: HTMLElement, cancelBtn: HTMLElement): Promise<void> {
-  runBtn.setAttribute('disabled', 'true');
-  cancelBtn.removeAttribute('disabled');
-  // Sequential, so the reported milliseconds are a fair comparison rather than
-  // seven workers fighting over the same cores.
+/**
+ * Run every method in turn, and STOP when cancelled.
+ *
+ * The loop used to press on after `Cancel`: terminating the worker rejected the
+ * job that was running, the empty catch swallowed it, and the next iteration
+ * dispatched onto a freshly-built worker. Measured, four rows published results
+ * after cancellation — including a PASS verdict twenty seconds later. The batch
+ * token is checked before AND after every await, because the user can cancel
+ * during either window.
+ */
+async function runAllSequentially(runner: Runner): Promise<void> {
+  const batch = startBatch();
+  emit();
   for (const id of ALGORITHM_ORDER) {
+    if (!batchIsCurrent(batch)) break;
     await runOne(runner, id);
+    if (!batchIsCurrent(batch)) break;
   }
-  runBtn.removeAttribute('disabled');
-  cancelBtn.setAttribute('disabled', 'true');
+  emit();
 }

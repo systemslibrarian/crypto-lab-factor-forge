@@ -3,18 +3,42 @@
  * lab teaches.
  *
  * Miller-Rabin is a PROBABILISTIC test, and this lab says so wherever it
- * reports a result. Below 3,317,044,064,679,887,385,961,981 the first
+ * reports a result. Below psi_13 = 3,317,044,064,679,887,385,961,981 the first
  * thirteen prime bases are a proven-deterministic set (Sorenson & Webster,
- * "Strong pseudoprimes to twelve prime bases", Math. Comp. 2015), so for every
- * N this lab can actually factor in a browser the answer is exact; above it we
- * add random bases and the verdict is stated as probabilistic.
+ * "Strong pseudoprimes to twelve prime bases", Math. Comp. 84 (2015) 2483-2496,
+ * which computes psi_12 and psi_13), so for every N this lab can actually factor
+ * in a browser the answer is exact; above it we add random bases and the verdict
+ * is stated as probabilistic. The base COUNT and the limit are two halves of one
+ * theorem and must be changed together -- see DETERMINISTIC_BASES.
  */
 
 import { bitLength, gcd, modpow, primesBelow, randomInRange } from './bigint';
 
-/** Sorenson-Webster: proven deterministic for n < 3.317e24. */
-const DETERMINISTIC_BASES = [2n, 3n, 5n, 7n, 11n, 13n, 17n, 19n, 23n, 29n, 31n, 37n];
+/**
+ * Sorenson-Webster: the first THIRTEEN prime bases are proven deterministic below
+ * psi_13 = 3,317,044,064,679,887,385,961,981.
+ *
+ * Count them. 41n is load-bearing and was missing here once: with only the first
+ * twelve bases the proven bound is psi_12 = 318,665,857,834,031,151,167,461, and
+ * psi_12 itself is composite -- so `millerRabin(psi_12)` returned
+ * {prime: true, deterministic: true} and the verifier certified a composite as a
+ * prime factor, claiming the answer was proven while doing it. That is invariant
+ * I1 failing at the root, and it is silent: every ordinary input still agrees.
+ * `primality.test.ts` pins BOTH psi values so the pairing cannot drift again.
+ */
+const DETERMINISTIC_BASES = [2n, 3n, 5n, 7n, 11n, 13n, 17n, 19n, 23n, 29n, 31n, 37n, 41n];
 const DETERMINISTIC_LIMIT = 3317044064679887385961981n;
+
+/**
+ * The smallest composite that is a strong pseudoprime to all of the first k prime
+ * bases, for k = 1..13 (Jaeschke 1993; Sorenson & Webster 2015). PSI[k] is the
+ * exact point at which k bases stop being enough, so PSI[DETERMINISTIC_BASES.length]
+ * must equal DETERMINISTIC_LIMIT -- asserted in the tests rather than trusted.
+ */
+export const PSI: Record<number, bigint> = {
+  12: 318665857834031151167461n,
+  13: 3317044064679887385961981n,
+};
 
 const SMALL_PRIMES = primesBelow(1000).map(BigInt);
 
@@ -121,8 +145,25 @@ export function smoothPlusOnePrime(bits: number, smoothBound: number): bigint {
 }
 
 /**
- * A safe prime p = 2q + 1 with q prime. p-1 = 2q and p+1 = 2(q+1) both have a
- * huge prime factor, which is what makes p-1 and p+1 hopeless against it.
+ * A safe prime p = 2q + 1 with q prime. This closes ONE side, not both.
+ *
+ * p - 1 = 2q has the prime factor q, one bit short of p itself, so Pollard p-1
+ * would need a smoothness bound of that order and is finished.
+ *
+ * p + 1 = 2(q + 1) gets no such guarantee. q + 1 is an arbitrary even number:
+ * it is B-smooth about as often as any number of its size, which at the sizes
+ * this page runs is often enough to matter and at any size is a property you
+ * have not controlled. So a safe prime says nothing about Williams p+1.
+ *
+ * This comment used to claim that p + 1 = 2(q + 1) "also has a huge prime
+ * factor", making both methods hopeless. That is false, and it contradicted
+ * every other statement in the lab: the Weak N Forge's "p + 1 is smooth" target
+ * carries the rule "p + 1 must have a large prime factor too -- a safe prime
+ * does NOT guarantee this", and its "no structure at all" target has to sample
+ * safe primes and REJECT the ones whose p + 1 turns out smooth (see the
+ * `rough(p + 1n, B)` condition in gen/weak.ts). A comment that promises a
+ * guarantee the code spends attempts working around is the kind of error that
+ * ends up quoted back as a key-generation rule.
  */
 export function safePrime(bits: number): bigint {
   for (;;) {
@@ -136,7 +177,11 @@ export function safePrime(bits: number): bigint {
  * Complete factorization of a SMALL integer by trial division. Used only to
  * compute the "why it worked" evidence (invariant I2): the smoothness of p-1,
  * p+1 or a curve order is FACTORED and shown, never asserted.
- * Returns null when a cofactor above `limit` survives.
+ * Trial division runs to `limit`; a cofactor that survives it is kept only if
+ * Miller-Rabin says it is prime. Returns null when that cofactor is composite,
+ * because the factorization would then be incomplete and every claim resting on
+ * it -- "the largest prime factor of p - 1 is X" -- would be wrong rather than
+ * merely unknown.
  */
 export function factorSmall(
   n: bigint,
@@ -163,7 +208,7 @@ export function factorSmall(
   return out;
 }
 
-/** The largest prime factor of n, or null if n has a factor too big to find. */
+/** The largest prime factor of n, or null when `factorSmall` could not finish. */
 export function largestPrimeFactor(n: bigint): bigint | null {
   const f = factorSmall(n);
   if (!f) return null;

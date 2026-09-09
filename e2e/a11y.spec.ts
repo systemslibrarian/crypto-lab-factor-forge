@@ -4,7 +4,9 @@ import {
   driveAllStates,
   expectBaselineNotStale,
   NARROW,
+  REFLOW,
   reportCollected,
+  scan,
   watchPageErrors,
 } from './gate';
 
@@ -56,6 +58,76 @@ for (const theme of ['dark'] as const) {
     await driveAllStates(page, `${theme} @380px`);
     expect(errors, errors.join('\n')).toEqual([]);
     expectBaselineNotStale();
+    reportCollected();
+  });
+
+  /**
+   * SC 1.4.10 Reflow is specified at 320 CSS px, not at the 380 the drive above
+   * uses, and two real overflow defects lived in that 60-pixel gap. The full
+   * drive is not repeated here -- it takes minutes and the criteria it covers
+   * are width-independent -- but every panel is opened and scanned, which is
+   * what reflow needs.
+   */
+  test(`no WCAG A/AA violations in ${theme} theme at 320px, the width SC 1.4.10 specifies`, async ({
+    page,
+  }) => {
+    test.setTimeout(900_000);
+    const errors = watchPageErrors(page);
+    await page.setViewportSize(REFLOW);
+    await boot(page, theme);
+    await scan(page, `${theme} @320px / arrival`);
+    for (const [name, panel] of [
+      ['Weak N Forge', '#panel-forge'],
+      ['Trace', '#panel-trace'],
+      ['The Ladder', '#panel-ladder'],
+      ['Shor', '#panel-shor'],
+    ] as const) {
+      await page.getByRole('tab', { name: new RegExp(name) }).click();
+      await expect(page.locator(panel)).toBeVisible();
+      await scan(page, `${theme} @320px / ${name}`);
+    }
+    expect(errors, errors.join('\n')).toEqual([]);
+    reportCollected();
+  });
+
+  /**
+   * Forced colours (Windows High Contrast) replaces every author background and
+   * border with a system colour, so any state carried by a fill or a border hue
+   * disappears. `style.css` has a `@media (forced-colors: active)` block for
+   * exactly that; without a pass that emulates it, the block is a claim rather
+   * than a measurement.
+   */
+  test(`state survives forced colours in ${theme} theme`, async ({ page }) => {
+    test.setTimeout(600_000);
+    const errors = watchPageErrors(page);
+    await page.emulateMedia({ forcedColors: 'active' });
+    await boot(page, theme);
+    expect(
+      await page.evaluate(() => matchMedia('(forced-colors: active)').matches),
+      'forced-colors emulation must actually be in effect'
+    ).toBe(true);
+    // The selected tab must still be distinguishable from an unselected one by
+    // something forced colours preserves.
+    const distinguishable = await page.evaluate(() => {
+      const tabs = Array.from(document.querySelectorAll<HTMLElement>('.tab-btn'));
+      const selected = tabs.find((t) => t.getAttribute('aria-selected') === 'true');
+      const other = tabs.find((t) => t.getAttribute('aria-selected') !== 'true');
+      if (!selected || !other) return 'missing tabs';
+      const a = getComputedStyle(selected);
+      const b = getComputedStyle(other);
+      const differs = [
+        a.backgroundColor !== b.backgroundColor,
+        a.borderTopStyle !== b.borderTopStyle,
+        a.borderTopWidth !== b.borderTopWidth,
+        a.outlineStyle !== b.outlineStyle,
+        a.textDecorationLine !== b.textDecorationLine,
+        a.forcedColorAdjust !== b.forcedColorAdjust,
+      ];
+      return differs.some(Boolean) ? 'ok' : `identical: bg=${a.backgroundColor} border=${a.borderTopStyle}`;
+    });
+    expect(distinguishable, 'the selected tab must remain distinguishable in forced colours').toBe('ok');
+    await scan(page, `${theme} / forced colours`);
+    expect(errors, errors.join('\n')).toEqual([]);
     reportCollected();
   });
 }

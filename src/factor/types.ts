@@ -72,6 +72,14 @@ export type WhyEvidence =
       bound: number;
       /** false when the cofactor was too large to factor, so no claim is made. */
       complete: boolean;
+      /**
+       * Whether largestPrime <= bound actually holds. Computed here rather than
+       * assumed by the sentence that renders it: Williams p+1 used to print
+       * "p + 1 = 21998936388, whose largest prime factor is 55021 — under the
+       * bound 10,000", which is false, because that run had actually succeeded in
+       * the p-1 group. The renderer now reads this flag instead of asserting.
+       */
+      withinBound: boolean;
     }
   | {
       kind: 'relations';

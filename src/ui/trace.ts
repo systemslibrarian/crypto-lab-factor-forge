@@ -10,7 +10,7 @@
 import { algorithmMeta, type AlgorithmId } from '../factor/types';
 import { ALGORITHM_ORDER } from '../factor/registry';
 import { clear, el, kv, verdict } from './dom';
-import { emit, state } from './state';
+import { completedRuns, emit, state } from './state';
 import { whyDetail } from './why';
 
 export function mountTracePanel(root: HTMLElement): () => void {
@@ -28,14 +28,15 @@ export function mountTracePanel(root: HTMLElement): () => void {
       )
     );
 
-    const done = ALGORITHM_ORDER.filter((id) => state.runs.has(id));
+    const runs = completedRuns();
+    const done = ALGORITHM_ORDER.filter((id) => runs.has(id));
     if (done.length === 0) {
       root.append(
         verdict('idle', 'Nothing to trace yet.', 'Run a method on the "Factor N" tab and its trace appears here.')
       );
       return;
     }
-    if (!state.traceFocus || !state.runs.has(state.traceFocus)) {
+    if (!state.traceFocus || !runs.has(state.traceFocus)) {
       state.traceFocus = done[0];
       state.traceStep = 0;
     }
@@ -45,7 +46,7 @@ export function mountTracePanel(root: HTMLElement): () => void {
     field.append(el('label', { for: 'trace-pick', text: 'Trace which run' }));
     const pick = el('select', { id: 'trace-pick' }) as HTMLSelectElement;
     for (const id of done) {
-      const rec = state.runs.get(id)!;
+      const rec = runs.get(id)!;
       const won = rec.verdict.status === 'verified';
       pick.append(
         el('option', {
@@ -63,7 +64,7 @@ export function mountTracePanel(root: HTMLElement): () => void {
     field.append(pick);
     card.append(field);
 
-    const record = state.runs.get(state.traceFocus)!;
+    const record = runs.get(state.traceFocus)!;
     const meta = algorithmMeta(state.traceFocus);
     const steps = record.outcome.trace.steps;
     const shown = Math.min(state.traceStep, steps.length);
@@ -97,6 +98,15 @@ export function mountTracePanel(root: HTMLElement): () => void {
     const list = el('div', { id: 'trace-steps' });
     for (const s of steps.slice(0, shown)) {
       const box = el('div', { class: 'trace-step', 'data-pivotal': s.pivotal ? 'true' : 'false' });
+      if (s.pivotal) {
+        // A REAL element, not only the CSS ::before that also marks it. The
+        // pivotal step is the moment the factor falls out -- the single most
+        // important line in the trace -- and it used to be distinguished by
+        // border colour alone (SC 1.4.1). Generated content fixes the visual
+        // half, but whether a screen reader announces it is engine-dependent,
+        // so the word is in the markup too.
+        box.append(el('span', { class: 'trace-pivot', text: 'Pivotal step' }));
+      }
       box.append(el('div', { class: 'trace-label', text: s.label }));
       box.append(el('p', { class: 'trace-detail', text: s.detail }));
       if (s.values && s.values.length > 0) box.append(kv(s.values));

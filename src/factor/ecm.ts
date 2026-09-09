@@ -202,6 +202,7 @@ function finish(
     largestPrime: 'unknown',
     bound,
     complete: false,
+    withinBound: false,
   };
   if (curve) {
     const ord = curveOrder(curve.a24, curve.P, found);

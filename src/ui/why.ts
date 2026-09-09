@@ -21,9 +21,14 @@ export function whySentence(trace: FactorTrace): string {
     case 'smallest-factor':
       return `The factor is ${why.factorBits} bits; sqrt(p) is about ${why.sqrtFactor} and the walk took ${why.steps.toLocaleString()} steps.`;
     case 'smoothness':
-      return why.complete
-        ? `${why.group} = ${why.value}, whose largest prime factor is ${why.largestPrime} — under the bound ${why.bound.toLocaleString()}.`
-        : `${why.group} could not be factored here, so no smoothness claim is made.`;
+      if (!why.complete) {
+        return `${why.group} could not be factored here, so no smoothness claim is made.`;
+      }
+      // The relation is READ from the evidence, never asserted. This sentence
+      // once ended "— under the bound 10,000" beside a largest prime of 55,021.
+      return why.withinBound
+        ? `${why.group} = ${why.value}, whose largest prime factor is ${why.largestPrime} — at or below the bound ${why.bound.toLocaleString()}.`
+        : `${why.group} = ${why.value}, whose largest prime factor is ${why.largestPrime} — ABOVE the bound ${why.bound.toLocaleString()}, so the bound alone does not explain this run.`;
     case 'relations':
       return `${why.relations} smooth relations over a ${why.factorBaseSize}-prime factor base gave ${why.dependencies} dependencies; ${why.trivialAttempts} produced a trivial gcd before one split N.`;
   }
@@ -42,7 +47,9 @@ export function whyDetail(why: WhyEvidence): HTMLElement {
         box.append(
           el('p', {
             class: 'small muted',
-            text: 'That factorization was computed here from the recovered factor — it is evidence, not a claim.',
+            text: why.withinBound
+              ? 'That factorization was computed here from the recovered factor — it is evidence, not a claim.'
+              : 'That factorization was computed here from the recovered factor, and it does NOT clear the bound — which is itself the result: something other than the stage-1 bound is what let this run through.',
           })
         );
       }

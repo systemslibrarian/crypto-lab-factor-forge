@@ -75,7 +75,7 @@ async function setN(page: Page, n: bigint): Promise<void> {
 
 async function run(page: Page, algo: string): Promise<void> {
   const row = page.locator(`.race-row[data-algorithm="${algo}"]`);
-  await row.getByRole('button', { name: 'Run' }).click();
+  await row.getByRole('button', { name: /^Run( again)?$/ }).click();
   await expect(row.locator('.race-time')).toBeVisible({ timeout: 120_000 });
 }
 
@@ -359,6 +359,173 @@ test('retirement: changing N discards the verdicts AND says so', async ({ page }
   await expect(page.locator('#retired-note')).toContainText(String(a.n));
 });
 
+/**
+ * P0 REGRESSION, measured before the fix: pressing Cancel during the batch
+ * terminated the running worker and the loop then launched every remaining
+ * method anyway. Four rows published results after cancellation, including a
+ * PASS verdict twenty seconds later.
+ */
+test('cancel stops the batch, and nothing publishes a result afterwards', async ({ page }) => {
+  // A 127-bit N with two 64-bit primes: nothing here finds a factor quickly, so
+  // the batch is genuinely still running when Cancel is pressed.
+  await page.locator('details.params > summary').click();
+  await page.locator('#p-rho').fill('50000000');
+  await page.locator('#p-rho').blur();
+  await page.locator('#p-cap').fill('120000');
+  await page.locator('#p-cap').blur();
+  await setN(page, 168087653461343538520835907316479739447n);
+
+  await page.getByRole('button', { name: /Run all seven/ }).click();
+  await expect(rowFor(page, 'rho')).toHaveAttribute('data-state', 'busy', { timeout: 60_000 });
+  await page.locator('#cancel').click();
+
+  const snapshot = await page.locator('.race-row').evaluateAll((rs) =>
+    rs.map((r) => (r as HTMLElement).dataset.state)
+  );
+  // The running row becomes an explicit cancellation, not "not run yet".
+  await expect(rowFor(page, 'rho')).toHaveAttribute('data-state', 'cancelled');
+  await expect(rowFor(page, 'rho').locator('.pill')).toContainText('CANCELLED');
+
+  // Give the loop every chance to misbehave.
+  await page.waitForTimeout(6000);
+  const after = await page.locator('.race-row').evaluateAll((rs) =>
+    rs.map((r) => (r as HTMLElement).dataset.state)
+  );
+  expect(after, 'no row may change state after Cancel').toEqual(snapshot);
+});
+
+/**
+ * P0 REGRESSION, measured before the fix: rho was started on a 127-bit modulus,
+ * N was changed to 15 mid-run, and twenty seconds later the board read
+ * "rho — GAVE UP: no collision in 50,000,000 iterations" underneath N = 15,
+ * where rho finds a factor instantly. The verifier could not catch it: it
+ * refutes a mismatched PRODUCT, and a give-up has no product.
+ */
+test('a run in flight when N changes can never be attributed to the new N', async ({ page }) => {
+  await page.locator('details.params > summary').click();
+  await page.locator('#p-rho').fill('50000000');
+  await page.locator('#p-rho').blur();
+  await page.locator('#p-cap').fill('120000');
+  await page.locator('#p-cap').blur();
+  await setN(page, 168087653461343538520835907316479739447n);
+  await rowFor(page, 'rho').getByRole('button', { name: /^Run/ }).click();
+  await expect(rowFor(page, 'rho')).toHaveAttribute('data-state', 'busy', { timeout: 60_000 });
+
+  await setN(page, 15n);
+  await expect(page.locator('#retired-note')).toContainText('still in flight');
+  await expect(page.locator('#retired-note')).toContainText('168087653461343538520835907316479739447');
+
+  await page.waitForTimeout(6000);
+  const row = rowFor(page, 'rho');
+  await expect(row).not.toHaveAttribute('data-state', 'fail');
+  await expect(row).not.toHaveAttribute('data-state', 'pass');
+  const text = await row.locator('.race-status').innerText();
+  expect(text, 'the old run must not describe the new N').not.toContain('50,000,000');
+  await expect(row.locator('.pill')).toContainText('CANCELLED');
+});
+
+test('a permalink round-trips the experiment', async ({ page }) => {
+  await setN(page, V('safe-primes').n);
+  await page.locator('details.params > summary').click();
+  await page.locator('#p-b1').fill('777');
+  await page.locator('#p-b1').blur();
+  await page.getByRole('button', { name: 'Copy permalink' }).click();
+  const url = page.url();
+  expect(url).toContain(`n=${V('safe-primes').n}`);
+  expect(url).toContain('b1=777');
+
+  await page.goto(url);
+  await expect(page.locator('#n-input')).toHaveValue(String(V('safe-primes').n));
+  await page.locator('details.params > summary').click();
+  await expect(page.locator('#p-b1')).toHaveValue('777');
+});
+
+test('a permalink carrying an out-of-range bound is rejected, not clamped', async ({ page }) => {
+  // A URL is untrusted input: an rhoSteps of 1e12 arriving that way would hang
+  // the tab exactly as surely as one typed in, and silently clamping it would
+  // make the link mean something different from what it says.
+  await page.goto('./?n=1640344808434621&rs=999999999999');
+  await expect(page.locator('#url-note')).toBeVisible();
+  await expect(page.locator('#url-note')).toContainText('rs=999999999999');
+  await page.locator('details.params > summary').click();
+  await expect(page.locator('#p-rho')).toHaveValue('3000000');
+});
+
+test('an exported run carries the provenance needed to reproduce it', async ({ page }) => {
+  await setN(page, V('smooth-pminus1').n);
+  await run(page, 'pminus1');
+  await expect(rowFor(page, 'pminus1')).toHaveAttribute('data-state', 'pass');
+  const [download] = await Promise.all([
+    page.waitForEvent('download'),
+    rowFor(page, 'pminus1').getByRole('button', { name: 'Export run' }).click(),
+  ]);
+  const stream = await download.createReadStream();
+  const chunks: Buffer[] = [];
+  for await (const c of stream) chunks.push(c as Buffer);
+  const json = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+
+  expect(json.schema).toBe('crypto-lab-factor-forge/run@1');
+  expect(json.experiment.n).toBe(String(V('smooth-pminus1').n));
+  expect(json.experiment.seed).toMatch(/^[0-9a-f]{32}$/);
+  expect(json.experiment.params.smoothBound).toBe(10000);
+  expect(json.build.commit).toBeTruthy();
+  // The verifier's verdict travels WITH the claim, not separately from it.
+  expect(json.verdict.status).toBe('verified');
+  expect(BigInt(json.result.p) * BigInt(json.result.q)).toBe(V('smooth-pminus1').n);
+  // And it says honestly whether the seed reproduces the outcome.
+  expect(json.result.cappedByTime).toBe(false);
+  expect(json.reproducibility).toContain('reproduces this outcome exactly');
+});
+
+/**
+ * Count integrity. Prose that states a number drifts from the thing it counts;
+ * the fix was to derive every count, and this asserts the derivation agrees
+ * with what is rendered.
+ */
+test('every count on the page agrees with the thing it counts', async ({ page }) => {
+  // The meta description names the methods it counts.
+  const desc = await page.locator('meta[name="description"]').getAttribute('content');
+  const rows = await page.locator('.race-row').count();
+  expect(desc).toContain('Seven classical integer factoring');
+  expect(rows).toBe(7);
+
+  await page.getByRole('tab', { name: 'The Ladder' }).click();
+  const cards = await page.locator('.ladder-card').count();
+  expect(cards).toBe(rows);
+
+  // "These N are the methods whose cost genuinely is a function of N" must equal
+  // the number of series actually drawn on that chart. It said four beside a
+  // chart carrying three.
+  const countText = await page.locator('#against-n-count').innerText();
+  const stated = Number(countText.match(/These (\d+) are/)![1]);
+  const listed = countText.split(':')[1].split('.')[0].split(',').length;
+  expect(stated).toBe(listed);
+
+  const legend = await page.locator('#ladder-legend').innerText();
+  const methods = Number(legend.match(/(\d+) methods/)![1]);
+  const drivers = Number(legend.match(/(\d+) distinct drivers/)![1]);
+  expect(methods).toBe(cards);
+  const axes = await page.locator('.ladder-axis').allInnerTexts();
+  const distinct = new Set(axes.map((a) => a.split(' vs ')[1])).size;
+  expect(drivers).toBe(distinct);
+});
+
+test('a run stopped by its cap is not presented as a timing', async ({ page }) => {
+  await setN(page, V('close-primes').n);
+  await page.locator('details.params > summary').click();
+  // The STEP cap must be raised out of the way first, or whichever cap the
+  // engine reaches first decides the outcome -- and it differs by engine. This
+  // test is about the wall-clock cap, so make that the only one reachable.
+  await page.locator('#p-rho').fill('50000000');
+  await page.locator('#p-rho').blur();
+  await page.locator('#p-cap').fill('300');
+  await page.locator('#p-cap').blur();
+  await run(page, 'rho');
+  const time = rowFor(page, 'rho').locator('.race-time');
+  await expect(time).toHaveText(/^cap /);
+  await expect(time).toHaveClass(/race-time-capped/);
+});
+
 test('no-op guard: re-entering the same N does NOT retire a fresh verdict', async ({ page }) => {
   const a = V('smooth-pminus1');
   await setN(page, a.n);
@@ -377,6 +544,7 @@ test('changing a bound retires the board too', async ({ page }) => {
   await page.locator('#p-b1').fill('50');
   await page.locator('#p-b1').blur();
   await expect(rowFor(page, 'pminus1')).toHaveAttribute('data-state', 'idle');
+  await expect(page.locator('#retired-note')).toContainText('under the previous bounds');
   // ...and at the lower bound the same N now resists it.
   await run(page, 'pminus1');
   await expect(rowFor(page, 'pminus1')).toHaveAttribute('data-state', 'fail');

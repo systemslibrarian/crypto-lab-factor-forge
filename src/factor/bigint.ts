@@ -5,6 +5,8 @@
  * arithmetic; nothing is approximated and nothing is simulated.
  */
 
+import { getRng } from './rng';
+
 export function abs(a: bigint): bigint {
   return a < 0n ? -a : a;
 }
@@ -112,8 +114,15 @@ export function iroot(n: bigint, k: number): bigint {
 
 /**
  * If n = b^k for some k >= 2, return {base, exponent}; otherwise null.
- * A perfect power is an edge case every method below would otherwise
- * mishandle (rho in particular loops on n = p^2), so it is detected up front.
+ *
+ * Detected up front because knowing the shape is cheaper than searching for it,
+ * NOT because the search would fail. An earlier version of this comment claimed
+ * "rho in particular loops on n = p^2", which is false and was measured to be
+ * false: Brent's rho splits p^2 on the first c it tries, because the walk still
+ * collides modulo p on the usual sqrt(p) schedule. What differs is the ANSWER --
+ * the only nontrivial gcd available is p, so the split is p x p rather than two
+ * distinct primes, and the recursion has to be applied to both halves. Peeling
+ * the power here makes that structure visible instead of leaving it implicit.
  */
 export function perfectPower(n: bigint): { base: bigint; exponent: number } | null {
   if (n < 4n) return null;
@@ -186,14 +195,23 @@ export function sqrtMod(a: bigint, p: bigint): bigint | null {
   return r;
 }
 
-/** Uniform random BigInt in [0, bound). Uses crypto.getRandomValues. */
+/**
+ * Uniform random BigInt in [0, bound), drawn from the CURRENT random source.
+ *
+ * That indirection is the whole reason a run can be replayed: production uses
+ * `crypto.getRandomValues`, and a seeded run substitutes a deterministic stream
+ * without any algorithm knowing the difference. See `rng.ts`.
+ *
+ * Rejection sampling, not modulo: taking `v % bound` would bias the low values
+ * whenever `bound` is not a power of two, which for ECM's sigma and rho's c is a
+ * silent bias in exactly the parameter the method's success depends on.
+ */
 export function randomBelow(bound: bigint): bigint {
   if (bound <= 0n) throw new Error('randomBelow: bound must be positive');
   const bits = bitLength(bound);
   const bytes = Math.ceil(bits / 8);
-  const buf = new Uint8Array(bytes);
   for (;;) {
-    crypto.getRandomValues(buf);
+    const buf = getRng().bytes(bytes);
     let v = 0n;
     for (const b of buf) v = (v << 8n) | BigInt(b);
     v >>= BigInt(bytes * 8 - bits);

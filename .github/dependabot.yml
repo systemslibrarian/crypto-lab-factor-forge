@@ -28,6 +28,12 @@ updates:
           - "minor"
           - "patch"
 
+  # This ecosystem is also what makes the SHA pins in deploy.yml maintainable
+  # rather than a slow decay. Dependabot understands the
+  # `uses: owner/repo@<sha> # vX.Y.Z` form and rewrites BOTH halves — the SHA
+  # and the trailing tag comment — so pinning to an immutable commit costs
+  # nothing in currency. Without this ecosystem configured, pinned actions
+  # would simply never be updated again.
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:

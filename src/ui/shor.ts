@@ -2,9 +2,26 @@
  * "Shor & the RSA rules" — the comparison the whole lab is built to set up.
  *
  * Every rule in RSA key generation is a defence against exactly one of the
- * classical methods on the race board. The table below names which. The last
- * row is the honest one: none of the rules touches Shor, because Shor exploits
- * no structure of N at all. That is what "different in kind" means.
+ * classical methods on the race board. The first table below names which, and
+ * every row of its last column reads No: not one of them touches Shor.
+ *
+ * The reason has to be stated carefully, and this panel used to state it
+ * wrongly. "Shor exploits no structure of N at all" is an over-claim: Shor
+ * exploits the multiplicative order of a modulo N, which is structure, and the
+ * whole algorithm is built on it. What Shor needs no part of is an ACCIDENTAL
+ * weakness in how p and q were chosen. MOST of the classical methods here wait
+ * for a property only SOME moduli have -- a small factor, a narrow p - q, a
+ * smooth p - 1 -- and a key-generation rule can take those methods off the
+ * board entirely. The sieves are the exception and are the interesting case:
+ * the quadratic sieve and the number field sieve need no accidental weakness
+ * either, which is exactly why the only rule that touches them is "make N
+ * bigger". So the sieves and Shor sit on the same side of the first
+ * distinction and on opposite sides of the second: all three are structure-free,
+ * and only Shor is polynomial. The periodicity of x -> a^x mod N is a property
+ * EVERY modulus has, for every a coprime to it, so there is nothing to generate
+ * your way out of and, unlike the sieves, no size at which the cost becomes
+ * prohibitive. That is what "different in kind" means, and it is a sharper
+ * claim than "no structure", not a softer one.
  */
 
 import { ALGORITHMS } from '../factor/types';
@@ -40,7 +57,7 @@ const RULES: Rule[] = [
     rule: 'Require p - 1 to have a large prime factor (a "strong" or safe prime)',
     defends: "Pollard's p-1",
     because:
-      'p-1 succeeds exactly when p - 1 is B-smooth for an affordable B. One large prime factor in p - 1 removes the whole attack.',
+      'p-1 finds p whenever p - 1 is B-smooth for an affordable B — or B1-smooth apart from one prime up to B2, which is the stage 2 this page runs. One large prime factor in p - 1 puts it past every affordable bound, and the same has to hold for q - 1.',
     helpsVsShor: false,
   },
   {
@@ -65,6 +82,18 @@ const RULES: Rule[] = [
     helpsVsShor: false,
   },
 ];
+
+/**
+ * The page spells small numbers out, and so does the claims suite that reads
+ * this panel's verdict as prose. Spelling a DERIVED count keeps the sentence
+ * and the table in step: add a seventh rule and the sentence says "seven"
+ * rather than continuing to say "six" beside seven rows.
+ */
+const NUMBER_WORDS = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten'];
+
+function spell(n: number): string {
+  return NUMBER_WORDS[n] ?? String(n);
+}
 
 export function mountShorPanel(root: HTMLElement): () => void {
   const render = (): void => {
@@ -91,7 +120,13 @@ export function mountShorPanel(root: HTMLElement): () => void {
           r.rule,
           r.defends,
           r.because,
-          el('span', { class: 'pill pill-bad', text: '✗ No' }),
+          // Read from the row, not hard-coded. The cell said "✗ No" whatever
+          // `helpsVsShor` held, so the field carrying the panel's central claim
+          // was never actually rendered -- a row could contradict its own
+          // column and the page would keep printing No.
+          r.helpsVsShor
+            ? el('span', { class: 'pill pill-ok', text: '✓ Yes' })
+            : el('span', { class: 'pill pill-bad', text: '✗ No' }),
         ]),
         'RSA key-generation rules'
       )
@@ -112,7 +147,10 @@ export function mountShorPanel(root: HTMLElement): () => void {
           ],
           [
             el('strong', { text: "Shor's algorithm" }),
-            el('strong', { text: 'nothing at all — it finds the period of a^x mod N' }),
+            el('strong', {
+              text:
+                'no accidental weakness in p or q — only the period of x ↦ a^x mod N, which every modulus has',
+            }),
             el('strong', { text: 'polynomial in log N' }),
           ],
         ],
@@ -122,15 +160,51 @@ export function mountShorPanel(root: HTMLElement): () => void {
     cmp.append(
       verdict(
         'alarm',
-        'None of the six rules above does anything against Shor.',
-        'Bigger primes, safe primes, a large |p - q| — every one of them removes a STRUCTURE. Shor uses no structure of N. It reduces factoring to finding the period of the function x ↦ a^x mod N, and period-finding is where a quantum computer is polynomial and every classical machine is not.'
+        // The count is read off RULES, not typed. It was the literal word "six"
+        // beside a table anyone could add a seventh row to -- the same drift the
+        // ladder panel was caught in with "These four" beside three curves.
+        `None of the ${spell(RULES.length)} rules above does anything against Shor.`,
+        'Safe primes, independently drawn primes, a large |p - q| — each of those removes a structure that only SOME moduli have, and with it a whole method. Shor asks for none of them. It reduces factoring to finding the period of x ↦ a^x mod N, and that period exists for every N and every a coprime to it: there is no modulus you can generate without one. Period-finding is where a quantum computer is polynomial and no classical method is known to be — known, because the classical hardness of factoring has never been proved either.'
+      )
+    );
+    // "Make the modulus larger" used to be described here as raising the qubit
+    // count "from polynomial to slightly more polynomial". That is not a
+    // well-formed statement about complexity: growing N moves you ALONG one
+    // polynomial, it does not change the polynomial's degree, and no amount of
+    // moving along it turns polynomial into anything else. The two things being
+    // run together are the resources a fixed algorithm needs and the asymptotic
+    // class it sits in, so the table below separates them explicitly.
+    cmp.append(el('h3', { text: 'Removing an algorithm is not the same as raising its bill' }));
+    cmp.append(
+      el('p', {
+        class: 'small',
+        text:
+          'The structural rules above do the first: each takes a method off the board and it never comes back. Making the modulus larger does only the second, to the sieves and to Shor alike.',
+      })
+    );
+    cmp.append(
+      table(
+        ['The change', 'Effect on the classical board', 'Effect on Shor'],
+        [
+          [
+            'Close a structure: safe primes, independent p and q, primes of equal size',
+            'Removes a method outright. p-1 against a p - 1 with a large prime factor does not get slower; it does not finish at any bound you can afford, and the method leaves the board.',
+            'None. Shor never asked whether p - 1 was smooth, or how far apart p and q were.',
+          ],
+          [
+            'Make the modulus larger',
+            'Raises the cost of the sieves — the quadratic sieve on the board here, and the number field sieve, which is not implemented on this page. Same L_N formulas, evaluated further out. It is the only lever against them, which is why it sets the key-size recommendations.',
+            'Raises the resources: qubits grow linearly in the bit length of N (the standard constructions want a small multiple of it) and gate count polynomially. The algorithm is unchanged and it is still polynomial.',
+          ],
+        ],
+        'Rules that remove a method, against a change that only raises the cost'
       )
     );
     cmp.append(
       el('p', {
         class: 'small',
       },
-        document.createTextNode('The one rule that does respond is "make the modulus larger" — and only in the sense that it raises the qubit count of the machine you need, from polynomial to slightly more polynomial. It does not change the shape of the problem. See '),
+        document.createTextNode('Going from a 2048-bit modulus to a 4096-bit one therefore roughly doubles the qubits and, on the cubic gate count the Ladder panel plots, multiplies the gates by about eight. That is a bigger bill for the same algorithm at the same asymptotic cost — a move along one curve. Every classical rule on this page does something categorically different: it deletes a curve. See '),
         el('a', { href: SHOR, target: '_blank', rel: 'noopener noreferrer' }, "crypto-lab-shor"),
         document.createTextNode(' for the period-finding half of this story, run as real arithmetic on a small N.')
       )

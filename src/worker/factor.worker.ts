@@ -4,6 +4,7 @@
  * pretending a run stopped while it kept burning the main thread.
  */
 
+import { withSeed } from '../factor/rng';
 import { REGISTRY } from '../factor/registry';
 import { factorTree } from '../factor/tree';
 import { generateWeakN } from '../gen/weak';
@@ -18,11 +19,15 @@ self.onmessage = (event: MessageEvent<WorkerRequest>) => {
   try {
     if (req.kind === 'factor') {
       const n = BigInt(req.n);
-      const out = REGISTRY[req.algorithm](n, req.params, {
-        maxMs: req.maxMs,
-        onProgress: (done, total, note) =>
-          post({ kind: 'progress', jobId: req.jobId, algorithm: req.algorithm, done, total, note }),
-      });
+      // Seeded: every random choice this run makes follows from req.seed, so the
+      // run record can name a seed that actually reproduces the search.
+      const out = withSeed(req.seed, () =>
+        REGISTRY[req.algorithm](n, req.params, {
+          maxMs: req.maxMs,
+          onProgress: (done, total, note) =>
+            post({ kind: 'progress', jobId: req.jobId, algorithm: req.algorithm, done, total, note }),
+        })
+      );
       post({
         kind: 'factored',
         jobId: req.jobId,
@@ -37,7 +42,7 @@ self.onmessage = (event: MessageEvent<WorkerRequest>) => {
       return;
     }
     if (req.kind === 'generate') {
-      const g = generateWeakN(req.target, { bits: req.bits, params: req.params });
+      const g = withSeed(req.seed, () => generateWeakN(req.target, { bits: req.bits, params: req.params }));
       post({
         kind: 'generated',
         jobId: req.jobId,

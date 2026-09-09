@@ -129,7 +129,15 @@ body {
   margin: 1rem 0 1.25rem;
 }
 .intro h2 { margin-top: 0; }
-.grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr)); gap: 1rem; }
+/* WCAG 1.4.10 (Reflow) is specified at 320 CSS px, not at the 380px the gate
+   drives. `minmax(20rem, 1fr)` is a 320px FLOOR: auto-fit drops to one column
+   but that column is still 320px wide, and the parameters grid sits inside
+   `details` (0.7rem of padding a side, plus its border) inside `#app` (whose
+   padding clamp bottoms out at 0.9rem a side), leaving 266.8px of room at a
+   320px viewport. The grid overflowed the document by ~53px and pushed the
+   whole page sideways. `min(20rem, 100%)` keeps the 20rem intent wherever
+   there is room for it and lets the track collapse where there is not. */
+.grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(20rem, 100%), 1fr)); gap: 1rem; }
 .row { display: flex; flex-wrap: wrap; gap: 0.6rem; align-items: center; }
 .muted { color: var(--text-dim); }
 .small { font-size: 0.85rem; }
@@ -179,7 +187,17 @@ select {
   font-family: var(--sans);
 }
 textarea { resize: vertical; min-height: 3.4rem; overflow-wrap: anywhere; }
+/* The border recolour is a REINFORCEMENT, never the only carrier: params.ts
+   renders a worded .field-error beside it, and race.ts pairs the attribute with
+   a full verdict. Hue alone would fail SC 1.4.1 and would vanish entirely in a
+   forced-colours theme, which repaints every border with one system colour. */
 input[aria-invalid="true"], textarea[aria-invalid="true"] { border-color: var(--bad); }
+.field-error {
+  margin: 0.3rem 0 0;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--bad-text);
+}
 .field { margin: 0.6rem 0; }
 .field-inline { flex: 1 1 12rem; }
 
@@ -233,6 +251,21 @@ input[aria-invalid="true"], textarea[aria-invalid="true"] { border-color: var(--
   color: var(--text-dim);
 }
 
+.race-row[data-state="cancelled"] { border-left-color: var(--control-border); }
+.race-row[data-state="error"] { border-left-color: var(--bad); }
+/* A capped run's number is the CAP, not a measurement. It reads differently. */
+.race-time-capped { font-style: italic; }
+.btn-tiny { padding: 0.28rem 0.5rem; font-size: 0.76rem; }
+.intro-more { margin: 0.6rem 0 0; background: transparent; }
+.url-note {
+  border: 1px dashed var(--alarm);
+  border-radius: 8px;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.85rem;
+  color: var(--alarm-text);
+}
+.build-stamp { font-family: var(--mono); font-size: 0.75rem; }
+
 /* ---------- key/value readouts ---------- */
 .kv { display: grid; grid-template-columns: minmax(8rem, auto) 1fr; gap: 0.2rem 0.8rem; margin: 0.5rem 0; font-size: 0.86rem; }
 .kv dt { color: var(--text-dim); }
@@ -258,7 +291,34 @@ input[aria-invalid="true"], textarea[aria-invalid="true"] { border-color: var(--
   margin: 0.5rem 0;
   background: var(--surface-2);
 }
-.trace-step[data-pivotal="true"] { border-left-color: var(--accent); }
+/* WCAG 1.4.1 (Use of Colour), a confirmed failure. The pivotal step — the one
+   where the factor actually falls out, the single thing the whole stepper is
+   built to show — was marked by swapping `border-left-color` to the accent and
+   by nothing else. Hue was the only carrier: in greyscale, under any red-green
+   or blue-yellow deficiency, or in a forced-colours theme that repaints every
+   border with one system colour, the most important line in the trace was
+   indistinguishable from the six around it.
+   Two carriers are added, neither of them colour: the word "Pivotal step", and
+   a left edge twice the width of the others.
+   The word is a REAL element (`.trace-pivot`, appended by trace.ts) rather than
+   generated content. Generated content would satisfy 1.4.1, which governs the
+   visual presentation — but whether a screen reader announces CSS `content`
+   varies by engine, and the most important line in the trace should not depend
+   on that. --accent-text is 5.64:1 on --surface-2, clearing the 4.5:1 the
+   repo's contrast oracle applies at 11.2px/700. */
+.trace-step[data-pivotal="true"] {
+  border-left-color: var(--accent);
+  border-left-width: 6px;
+}
+.trace-pivot {
+  display: block;
+  margin-bottom: 0.2rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--accent-text);
+}
 .trace-label { font-weight: 700; font-size: 0.92rem; }
 .trace-detail { font-size: 0.88rem; margin: 0.3rem 0 0; }
 
@@ -274,7 +334,12 @@ th { color: var(--text-dim); font-weight: 700; white-space: nowrap; }
 tbody tr:last-child td { border-bottom: none; }
 
 /* ---------- the ladder chart ---------- */
-.ladder-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr)); gap: 0.9rem; }
+/* 17rem = 272px, against 291.2px of content width at a 320px viewport: this one
+   fits, but only because `#app`'s padding clamp happens to bottom out at 0.9rem
+   and because the grid is a direct child of the panel rather than of a card.
+   Both are accidents. `min()` makes the track collapse on its own instead of
+   depending on them (WCAG 1.4.10). */
+.ladder-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(17rem, 100%), 1fr)); gap: 0.9rem; }
 .ladder-card {
   background: var(--surface-2);
   border: 1px solid var(--border);
@@ -283,7 +348,15 @@ tbody tr:last-child td { border-bottom: none; }
 }
 .ladder-card h3 { margin: 0 0 0.15rem; font-size: 0.95rem; }
 .ladder-axis { font-size: 0.78rem; color: var(--text-dim); margin: 0 0 0.4rem; }
-.ladder-card svg { width: 100%; height: auto; display: block; }
+/* The charts must reflow to 320px.
+   `.ladder-grid` and `.grid-2` both used minmax() minimums that exceed the
+   content width available at a 320px viewport once the page padding is counted,
+   so the document scrolled sideways -- a 1.4.10 failure at the width the
+   criterion is actually written at, which the gate never saw because it drove
+   380px. The tracks now collapse rather than forcing a minimum, and each chart
+   is given an explicit max-width so an <svg> with a viewBox and no width
+   attribute cannot fall back to a default object size wider than its card. */
+.chart { width: 100%; height: auto; display: block; }
 .ladder-note { font-size: 0.78rem; color: var(--text-dim); margin: 0.35rem 0 0; }
 
 /* ---------- pills / badges ---------- */
@@ -310,7 +383,19 @@ details {
   margin: 0.7rem 0;
   background: var(--surface-2);
 }
-summary { cursor: pointer; font-weight: 600; font-size: 0.9rem; }
+/* WCAG 2.5.8 (Target Size (Minimum), AA in 2.2): 24x24 CSS px. A `<summary>` is
+   the whole disclosure control, and at 0.9rem over the inherited 1.55
+   line-height its box was 14.4 x 1.55 = 22.32px tall with no padding of its own
+   — 1.68px short, on every disclosure this page ships. Padding rather than
+   a `min-height`, because `display: flex` or `grid` on a summary drops the
+   disclosure triangle in Blink and WebKit, trading a target-size fix for an
+   affordance. 22.32 + 2 x 2.4 = 27.1px.
+   Every other control clears it on today's metrics: .btn 39.8px, .tab-btn
+   38.7px, .btn-tiny 29.8px (0.76rem x 1.55 + 2 x 4.48 + 2 x 1), select and the
+   number inputs ~35px, all full-width or wider than 24px. The number inputs'
+   spinner arrows are under 24px but are drawn by the user agent and untouched
+   here, which is the "user agent control" exception. */
+summary { cursor: pointer; font-weight: 600; font-size: 0.9rem; padding: 0.15rem 0; }
 details[open] summary { margin-bottom: 0.4rem; }
 
 .negative-claim-text {
@@ -350,6 +435,78 @@ details[open] summary { margin-bottom: 0.4rem; }
   text-align: center;
 }
 .footer-links { overflow-wrap: anywhere; }
+
+/* ---------- forced colours / Windows High Contrast ---------- */
+/* In forced-colors mode the user agent throws away the palette above and
+   substitutes a handful of system colours: every `color` becomes CanvasText,
+   every background becomes Canvas, every border becomes CanvasText. Anything
+   this page said with a hue is then said in the same hue as everything else.
+   Most of the page survives that untouched, and deliberately so — every verdict
+   carries a glyph and a headline (dom.ts `verdict()`), every race outcome
+   carries a worded pill with a glyph (`✓ FACTORED — verified`, `✗ REFUTED by
+   the verifier`), a capped time is italic, the pivotal trace step now carries
+   the badge above, and the chart curves are separated by dash pattern rather
+   than by stroke colour (chart.ts). Three things did NOT survive, and they are
+   the three fixed here. Nothing in this block uses `forced-color-adjust: none`:
+   that would reimpose this lab's palette on a reader who asked the operating
+   system to take it away, which is the opposite of the point. */
+@media (forced-colors: active) {
+  /* 1. The selected tab was a FILL — accent background, accent-ink text —
+        against siblings with a transparent background. Forced colours
+        paint that fill Canvas, the same as the siblings, so the tablist lost
+        every visual trace of which tab was open; `aria-selected` still said so,
+        but only to assistive technology. Highlight/HighlightText is the system
+        pair reserved for a selected thing and is honoured in forced mode. */
+  .tab-btn[aria-selected="true"] {
+    background: Highlight;
+    color: HighlightText;
+    border-color: Highlight;
+  }
+  /* The hover fill goes the same way, so hover keeps an edge instead, which is
+     what the normal theme gives it for the same reason (1.4.11). */
+  .tab-btn:hover { border-color: Highlight; }
+
+  /* 2. Disabled controls. The user agent greys a disabled button by default,
+        but these rules set `color` and `border-color` explicitly and an author
+        colour is forced to plain CanvasText — so a disabled Run button, or the
+        Back button at step zero, rendered identically to a live one. GrayText
+        is the system colour reserved for exactly this. */
+  .btn:disabled,
+  .btn-primary:disabled {
+    color: GrayText;
+    border-color: GrayText;
+  }
+
+  /* 3. The primary button was a FILL too, and it fails the same way but worse:
+        `.btn-primary` pairs an --accent background with --accent-ink, a
+        near-black chosen to sit on that accent. Forced colours discards the
+        fill and keeps the ink, so on a dark system theme the page's most
+        important control rendered near-black on black. Caught by the gate's
+        forced-colours pass on its very first run, against #run-all.
+        ButtonFace/ButtonText is the system pair reserved for a button, and it
+        is guaranteed contrasting in whichever theme the reader chose; the
+        border takes ButtonText so the control still has an edge. */
+  .btn-primary {
+    background: ButtonFace;
+    color: ButtonText;
+    border-color: ButtonText;
+  }
+  /* Primary-ness is emphasis, not state, and forced colours has no "emphasis"
+     system colour. Keeping the thicker edge is the honest way to say it: a
+     shape difference survives where a hue difference cannot. */
+  .btn-primary { border-width: 2px; }
+
+  /* 4. The select's arrow is two CSS gradients, because `appearance: none`
+        removed the native one. `background-image` is NOT among the properties
+        forced colours replaces, so the arrow stayed --text-dim: a mid grey that
+        vanishes against a white Canvas, leaving a text field that no longer
+        looks like a chooser. Redrawn in CanvasText; the geometry is unchanged
+        so nothing moves. */
+  select {
+    background-image: linear-gradient(45deg, transparent 50%, CanvasText 50%),
+      linear-gradient(135deg, CanvasText 50%, transparent 50%);
+  }
+}
 
 /* Motion is tied to an action; there is no idle animation anywhere. This block
    still exists so the one transition that does run is cancelled for readers who
