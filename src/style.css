@@ -69,6 +69,10 @@ body {
 }
 #app p {
   margin: 0.5rem 0;
+  /* A page whose subject matter is 40-digit integers has no safe default here:
+     any paragraph may end up quoting one, and a single unbreakable token is all
+     it takes to push the document sideways. */
+  overflow-wrap: anywhere;
 }
 
 /* ---------- hero ---------- */
@@ -244,11 +248,18 @@ input[aria-invalid="true"], textarea[aria-invalid="true"] { border-color: var(--
   .race-row { grid-template-columns: 1fr; }
 }
 
+/* These notes quote the N they retired, which is an unbroken run of up to 40
+   digits with no break opportunity in it. Without this the note pushed the
+   whole document sideways at 380px -- a WCAG 1.4.10 failure that the CI runner
+   caught and a local macOS run did not, because the two disagree by a few
+   pixels of font metrics and the note happened to fit on one of them. Every
+   other surface that renders a full N already wraps this way. */
 .retired-note {
   border: 1px dashed var(--control-border);
   border-radius: 8px;
   padding: 0.45rem 0.7rem;
   color: var(--text-dim);
+  overflow-wrap: anywhere;
 }
 
 .race-row[data-state="cancelled"] { border-left-color: var(--control-border); }
@@ -258,6 +269,9 @@ input[aria-invalid="true"], textarea[aria-invalid="true"] { border-color: var(--
 .btn-tiny { padding: 0.28rem 0.5rem; font-size: 0.76rem; }
 .intro-more { margin: 0.6rem 0 0; background: transparent; }
 .url-note {
+  /* Quotes the rejected URL parameters verbatim, which can be a long unbroken
+     token. Same reflow hazard as .retired-note. */
+  overflow-wrap: anywhere;
   border: 1px dashed var(--alarm);
   border-radius: 8px;
   padding: 0.5rem 0.75rem;
