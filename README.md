@@ -110,9 +110,12 @@ limitation is visible in that state.
 5. **Trace** — step through a run. The `x_i` sequence and the gcd that pops for rho; the `a`-walk
    for Fermat; the curve counter, sigma, and the non-invertible denominator for ECM; the factor
    base, the smooth relations, the GF(2) matrix and the dependency for the sieve.
-6. **The Ladder** — seven charts with seven different x-axes, each labelled with what that method
-   actually depends on. Your own measured runs are plotted on the same axes. Only the three methods
-   that genuinely depend on `N` share an against-`N` chart, alongside Shor.
+6. **The Ladder** — seven charts, each labelled with what that method actually depends on, across
+   **five distinct axes**: trial division, Pollard rho and ECM genuinely share one, because all
+   three are driven by the size of the *smallest factor* and nothing else. Your own measured runs
+   are plotted on the same axes, in the same units as the model. A separate chart carries the only
+   three whose cost really is a function of `N` — the quadratic sieve, the number field sieve, and
+   Shor.
 7. **Shor & the RSA Rules** — which rule defends against which method, and the row where every
    answer is "No".
 
