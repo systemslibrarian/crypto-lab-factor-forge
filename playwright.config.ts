@@ -23,7 +23,7 @@ export default defineConfig({
   // server on a headless runner.
   reporter: [['list'], ['html', { open: 'never' }]],
   use: {
-    baseURL: 'http://localhost:4626/crypto-lab-factor-forge/',
+    baseURL: 'http://localhost:4200/crypto-lab-factor-forge/',
     // Kept only for the retry, so the artifact uploaded on failure carries the
     // trace of the run that actually failed rather than of every green run.
     trace: 'on-first-retry',
@@ -67,7 +67,7 @@ export default defineConfig({
     // dist/, so without this a failing build leaves the previous good bundle in
     // place and the suite passes green against code that no longer compiles.
     command: 'npm run build && npm run preview -- --port 4626 --strictPort',
-    url: 'http://localhost:4626/crypto-lab-factor-forge/',
+    url: 'http://localhost:4200/crypto-lab-factor-forge/',
     reuseExistingServer: !process.env.CI,
     timeout: 180_000,
   },
