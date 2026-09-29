@@ -66,7 +66,7 @@ export default defineConfig({
     // Build before serving: `vite preview` only serves whatever is already in
     // dist/, so without this a failing build leaves the previous good bundle in
     // place and the suite passes green against code that no longer compiles.
-    command: 'npm run build && npm run preview -- --port 4626 --strictPort',
+    command: 'npm run build && npm run preview -- --port 4200 --strictPort',
     url: 'http://localhost:4200/crypto-lab-factor-forge/',
     reuseExistingServer: !process.env.CI,
     timeout: 180_000,
