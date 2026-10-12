@@ -165,6 +165,19 @@ limitation is visible in that state.
   since, and its `L_N[1/3, 1.923]` cost is what current RSA key-size recommendations are derived
   from.
 
+### Research update — October 5, 2026
+
+In their preprint [*CUDA-MPQS: A GPU-Resident Self-Initializing Quadratic Sieve, and the
+Factorization of RSA-155*](https://arxiv.org/abs/2610.07126), Fabian Januszewski and Christoph
+Heinrichs report factoring the **512-bit RSA-155** challenge using 64 NVIDIA H100 GPUs for
+sieving and one H100 for the linear-algebra solve, totaling **700.6 GPU-hours**. The authors
+report this as the largest integer factored by the quadratic sieve to their knowledge.
+
+This is a **demonstrated result reported in a preprint**, not a new general factoring record:
+RSA-155 was already factored by the number field sieve in 1999. It does not demonstrate a
+break of modern RSA key sizes. These are external GPU measurements, not timings from this
+browser lab, and they are not used to extrapolate its performance table or cost charts.
+
 ---
 
 ## Performance — measured, not projected
