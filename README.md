@@ -23,6 +23,11 @@ different mistake:
 | Lenstra ECM | *some* elliptic curve over `F_p` having smooth order | the smallest factor |
 | Quadratic sieve | **nothing** about `p` or `q` — only `x² ≡ y² (mod N)` | the size of `N` |
 
+One method needs many keys: the **Shared Primes** tab builds a low-entropy corpus
+and runs batch GCD with product/remainder trees, plus an independent pairwise
+comparison. The mistake is reused prime-generation seeds across keys, not a
+small or unusually shaped single modulus.
+
 Every method here is a real implementation over native `BigInt`. Nothing is simulated, nothing is
 approximated, and no result is displayed until an independent verifier has multiplied the claimed
 factors back to `N` and put each through Miller–Rabin.
@@ -43,13 +48,15 @@ way out of, and unlike the sieves the cost stays polynomial as `N` grows. Bigger
 more of Shor's own polynomial; they do not remove it.
 
 **Security model:** none. This is a teaching demo. It factors numbers small enough to finish in a
-browser tab while you watch, which is many orders of magnitude below an RSA modulus. **Not
+browser tab while you watch. The single-modulus methods use small teaching inputs;
+Shared Primes also generates full-size moduli whose reused primes make GCD easy. **Not
 production cryptography.**
 
 ### What it does NOT prove
 
-- It does not show that RSA is breakable. Every size here is a teaching size; the largest `N` the
-  page will accept is 40 digits (~133 bits) against RSA's 2048.
+- It does not break properly generated RSA. Factor N accepts at most 40 digits
+  (~133 bits). Shared Primes accepts generated corpora with 256-, 512- or 1024-bit
+  primes: those larger moduli fall only when their public keys share factors.
 - The number field sieve is a **pointer, not an implementation**. Every NFS figure on the page is
   the standard `L_N[1/3, 1.923]` cost formula, labelled as a formula.
 - There is no quantum simulation. The Shor row is a cost comparison and a link to
@@ -118,6 +125,10 @@ limitation is visible in that state.
    Shor.
 7. **Shor & the RSA Rules** — which rule defends against which method, and the row where every
    answer is "No".
+8. **Shared Primes** — generate a seeded low-entropy corpus, predict and measure
+   collisions, inspect product/remainder trees, compare measured batch and naive
+   times, and audit a victim with four bounded single-key searches. Recovery must
+   pass the existing independent verifier; a compromised key is an alarm.
 
 ---
 
@@ -134,6 +145,9 @@ limitation is visible in that state.
 ---
 
 ## What Can Go Wrong
+
+- **Two devices boot with the same seed.** Reused primes let public moduli factor
+  each other. Large factors and failed bounded searches do not prevent this.
 
 - **A small prime survives key generation.** Trial division ends it. Under the default bound of
   100,000 this page finds any factor up to about 17 bits instantly.
@@ -216,13 +230,22 @@ npm test           # the unit suite (Vitest): BigInt core, primality, every
                    # algorithm, the generator, the verifier, and the run lifecycle
 npm run build      # tsc --noEmit, then vite build
 npm run test:claims  # the claims suite, on every configured browser project
-npm run test:a11y  # axe-core WCAG 2.1 A/AA gate, desktop and 380px
+npm run test:a11y  # axe-core WCAG 2.1 A/AA gate, including 320px
+npm run test:corpus-mutations # concrete build/hash/assertion/restore checks
 ```
 
 - **Unit tests** cover the BigInt core against naive reference implementations (Jacobi against a
   brute-force residue count, `primesBelow` against trial division, `modpow` against repeated
   multiplication), Miller–Rabin against a sieve for every `n < 5000` plus the Carmichael numbers and
   a strong pseudoprime to bases 2/3/5/7, and every algorithm against pinned vectors.
+- **Corpus checks** compare product and remainder trees with direct arithmetic and
+  batch GCD with all-pairs GCD on 200 seeded corpora. Local deterministic corpus
+  pins record public moduli and recovered indices; no published batch-GCD KAT is
+  claimed. Browser tests rederive every raw GCD, sharing relationship and recovered
+  factor from public moduli using their own Euclid/Miller–Rabin implementation.
+  Mutation checks include intermediate GCDs because the required pairwise fallback
+  can otherwise hide an incorrect batch formula. The new negative fixture says
+  exactly what happened: four bounded searches gave up, yet the corpus factored it.
 - **Pinned vectors** (`src/factor/vectors.ts`) fix the sizes at build time and record which methods
   each one falls to and resists. Both halves are asserted, so a change that makes a method
   accidentally stronger or weaker fails the suite.
@@ -323,6 +346,11 @@ Known and unfixed: the first control sits about 1.1 screens down on a 390 x 844 
 RSA-rules table scrolls horizontally inside its own region at 320 px.
 
 ## References
+
+- Heninger, Durumeric, Wustrow & Halderman, [Mining Your Ps and Qs](https://factorable.net/weakkeys12.conference.pdf), USENIX Security 2012, §3.3, Algorithm 1.
+- Lenstra et al., [Ron was wrong, Whit is right](https://eprint.iacr.org/2012/064), ePrint 2012/064.
+- Bernstein, [How to find smooth parts of integers](https://nymity.ch/anomalous-tor-keys/bibliography/pdf/Bernstein04.pdf), draft dated 2004-05-10, Algorithm 2.1.
+- Katz & Lindell, *Introduction to Modern Cryptography*, 3rd ed. (2021), §12.5.6 — the symmetric low-entropy seed model.
 
 - Pollard, "Theorems on factorization and primality testing", *Proc. Cambridge Philos. Soc.* **76**
   (1974) 521–528. — p−1

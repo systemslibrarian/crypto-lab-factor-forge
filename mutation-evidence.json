@@ -1,0 +1,68 @@
+[
+  {
+    "name": "wrong remainder modulus",
+    "sourceDiff": "diff --git a/src/corpus/batchgcd.ts b/src/corpus/batchgcd.ts\nindex e8407ec..8f3cd12 100644\n--- a/src/corpus/batchgcd.ts\n+++ b/src/corpus/batchgcd.ts\n@@ -15,7 +15,7 @@ export function remainderTree(products:bigint[][],observe?:LevelObserver):bigint\n   const levels:bigint[][]=Array(products.length),top=products.length-1;\n   levels[top]=products[top].slice();observe?.('remainder',top,levels[top]);\n   for(let level=top-1;level>=0;level--){\n-    levels[level]=products[level].map((n,i)=>levels[level+1][Math.floor(i/2)]%(n*n));\n+    levels[level]=products[level].map((n,i)=>levels[level+1][Math.floor(i/2)]%n);\n     observe?.('remainder',level,levels[level]);\n   }\n   return levels;\n",
+    "baseline": "bf5aef07637d9efd95ea0062054d55e6b544776a7968f74c74571fd88fbb2a65",
+    "mutant": "3c451426b947bf826351e7e5f8763cda6663f27a8d7bb3deb718f21d775645bd",
+    "namedTest": "batch and independent pairwise raw gcds",
+    "assertionFailure": true,
+    "retries": 0,
+    "servedAssetGuard": true,
+    "restoredGreen": true
+  },
+  {
+    "name": "missing leaf division",
+    "sourceDiff": "diff --git a/src/corpus/batchgcd.ts b/src/corpus/batchgcd.ts\nindex e8407ec..0923ea3 100644\n--- a/src/corpus/batchgcd.ts\n+++ b/src/corpus/batchgcd.ts\n@@ -38,7 +38,7 @@ function split(ns:bigint[],i:number,raw:bigint):CorpusSplit {\n // [extension] point: scaled remainder trees and Bernstein's further speedups.\n export function batchGcd(ns:bigint[],observe?:LevelObserver):{products:bigint[][];remainders:bigint[][];splits:CorpusSplit[]} {\n   const products=productTree(ns,observe),remainders=remainderTree(products,observe);\n-  const splits=ns.map((n,i)=>split(ns,i,gcd(n,remainders[0][i]/n)));\n+  const splits=ns.map((n,i)=>split(ns,i,gcd(n,remainders[0][i])));\n   return {products,remainders,splits};\n }\n /** Independent O(K²) route: exactly K(K-1)/2 pairwise GCD operations. */\n",
+    "baseline": "bf5aef07637d9efd95ea0062054d55e6b544776a7968f74c74571fd88fbb2a65",
+    "mutant": "b8e3e7fc8dfbce74daa9c25e2a80cf1bfb7c06ff1c0839f1aa0f3a73019596fb",
+    "namedTest": "corpus public GCD transcript",
+    "assertionFailure": true,
+    "retries": 0,
+    "servedAssetGuard": true,
+    "restoredGreen": true
+  },
+  {
+    "name": "fresh primes ignore repeated seeds",
+    "sourceDiff": "diff --git a/src/corpus/generate.ts b/src/corpus/generate.ts\nindex 0538a2b..c0678b7 100644\n--- a/src/corpus/generate.ts\n+++ b/src/corpus/generate.ts\n@@ -14,7 +14,7 @@ export const primeFromSeed=(r:number,bits:number):bigint=>withSeed(r.toString(16\n export function generateCorpus(ctx:CorpusContext,onProgress?:(done:number,total:number,note:string)=>void):{keys:CorpusKey[];distinctSeeds:number;rejectedEqual:number;observedSeedPairs:number} {\n   validateCorpus(ctx);const rng=seededRng(ctx.seed),cache=new Map<number,bigint>(),keys:CorpusKey[]=[];\n   const draw=():number=>{const b=rng.bytes(3);return (b[0]|b[1]<<8|b[2]<<16)&(2**ctx.s-1);};\n-  const prime=(r:number):bigint=>{if(!cache.has(r))cache.set(r,primeFromSeed(r,ctx.bits));return cache.get(r)!;};\n+  const prime=(_r:number):bigint=>randomPrime(ctx.bits);\n   let rejectedEqual=0;const uses=new Map<number,number>();\n   for(let i=0;i<ctx.K;i++){\n     const rp=draw(),p=prime(rp);let rq=draw(),attempts=0;\n",
+    "baseline": "bf5aef07637d9efd95ea0062054d55e6b544776a7968f74c74571fd88fbb2a65",
+    "mutant": "9803b63454a2e42e6b98bb089865695ab021b47b4d5475ab474bba8bf511cc77",
+    "namedTest": "corpus observed collisions",
+    "assertionFailure": true,
+    "retries": 0,
+    "servedAssetGuard": true,
+    "restoredGreen": true
+  },
+  {
+    "name": "verifier bypass",
+    "sourceDiff": "diff --git a/src/corpus/verify.ts b/src/corpus/verify.ts\nindex 4e0ba23..419ff96 100644\n--- a/src/corpus/verify.ts\n+++ b/src/corpus/verify.ts\n@@ -2,5 +2,5 @@ import { verifyFactorization, type Verdict } from '../verify/verify';\n import type { CorpusSplit } from './batchgcd';\n /** Nothing is rendered as recovered before the existing independent verifier. */\n export function verifyCorpus(ns:bigint[],splits:CorpusSplit[]):Verdict[] {\n-  return splits.map((split,i)=>verifyFactorization({n:ns[i],p:split.factor,q:split.factor===null?null:ns[i]/split.factor}));\n+  return splits.map((split,i)=>(void verifyFactorization, void ns[i], void split.factor, {status:'no-claim',product:null,productMatchesN:false,factors:[],fullyFactored:false,reason:'Verifier bypassed'} as Verdict));\n }\n",
+    "baseline": "bf5aef07637d9efd95ea0062054d55e6b544776a7968f74c74571fd88fbb2a65",
+    "mutant": "c0511aedee4ab0379f0d9e27f6bf2175888d300739722c58cd5bfa62f28e981c",
+    "namedTest": "every corpus result goes through the original verifier",
+    "assertionFailure": true,
+    "retries": 0,
+    "servedAssetGuard": true,
+    "restoredGreen": true
+  },
+  {
+    "name": "compromise painted green",
+    "sourceDiff": "diff --git a/src/ui/corpus.ts b/src/ui/corpus.ts\nindex 4a360a5..3b39cd9 100644\n--- a/src/ui/corpus.ts\n+++ b/src/ui/corpus.ts\n@@ -74,7 +74,7 @@ export function mountCorpusPanel(root:HTMLElement,runner:Runner):()=>void {\n       const details=el('details',{},el('summary',{text:`N${i} · ${BigInt(key.n).toString(2).length} bits`}),el('code',{'data-modulus':String(i),text:key.n}));\n       if(!attacked)return [String(i),details,'Not attacked','Not checked'];\n       const split=attacked.splits[i],v=attacked.verdicts[i],recovered=v.status==='verified'&&v.fullyFactored;\n-      const result=verdict(recovered?'alarm':v.status==='refuted'?'fail':'idle',recovered?'COMPROMISED':split.repeated.length?'Repeated modulus':'Shares nothing factored in this corpus',split.factor===null&&split.repeated.length?'The same key twice — gcd cannot split an identical modulus.':undefined);\n+      const result=verdict(recovered?'pass':v.status==='refuted'?'fail':'idle',recovered?'COMPROMISED':split.repeated.length?'Repeated modulus':'Shares nothing factored in this corpus',split.factor===null&&split.repeated.length?'The same key twice — gcd cannot split an identical modulus.':undefined);\n       result.setAttribute('data-key',String(i));result.setAttribute('data-compromised',String(recovered));\n       if(recovered)result.append(el('code',{'data-factor':String(i),text:split.factor!}));\n       result.append(el('p',{'data-raw-gcd':String(i),text:`g${i} = ${split.raw}${split.fallback?' · pairwise fallback required':''}`}));\n",
+    "baseline": "bf5aef07637d9efd95ea0062054d55e6b544776a7968f74c74571fd88fbb2a65",
+    "mutant": "be1cc4e67b97ba37e255eaece2b761454db7d366055357df0a6d4c5f1eb90f54",
+    "namedTest": "corpus public GCD transcript",
+    "assertionFailure": true,
+    "retries": 0,
+    "servedAssetGuard": true,
+    "restoredGreen": true
+  },
+  {
+    "name": "missing negative claim",
+    "sourceDiff": "diff --git a/src/ui/corpus.ts b/src/ui/corpus.ts\nindex 4a360a5..2166b3c 100644\n--- a/src/ui/corpus.ts\n+++ b/src/ui/corpus.ts\n@@ -7,7 +7,7 @@ import { DEFAULT_PARAMS, algorithmMeta, type AlgorithmId } from '../factor/types\n import { describeShape } from '../verify/verify';\n import type { SerializedCorpus, SerializedCorpusAttack, SerializedOutcome } from '../worker/protocol';\n \n-export const CORPUS_NEGATIVE_CLAIM='The four bounded per-key searches found no factor, yet the same public key was factored by the corpus. Giving up is not a certificate of security.';\n+export const CORPUS_NEGATIVE_CLAIM='';\n const AUDIT:AlgorithmId[]=['trial','fermat','pminus1','pplus1'];\n const CAP_MS=200;\n function button(id:string,text:string):HTMLButtonElement{return el('button',{id,type:'button',class:'btn',text});}\n",
+    "baseline": "bf5aef07637d9efd95ea0062054d55e6b544776a7968f74c74571fd88fbb2a65",
+    "mutant": "2e6b0eec3c2e11dcc72743f7fbe871a61d791e826d5cd17a230299e8fbd5525a",
+    "namedTest": "corpus negative claim",
+    "assertionFailure": true,
+    "retries": 0,
+    "servedAssetGuard": true,
+    "restoredGreen": true
+  }
+]

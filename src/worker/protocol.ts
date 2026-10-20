@@ -6,6 +6,18 @@
 import type { AlgorithmId, FactorTrace, Params } from '../factor/types';
 import type { WeaknessTarget } from '../gen/weak';
 import type { TreeNode } from '../factor/tree';
+import type { CorpusContext } from '../corpus/generate';
+import type { Verdict } from '../verify/verify';
+
+export type CorpusRequest =
+  | ({kind:'corpus'; operation:'generate';jobId:number} & CorpusContext)
+  | {kind:'corpus';operation:'batch'|'naive';jobId:number;moduli:string[]};
+export interface CorpusProgress {kind:'corpus-progress';jobId:number;stage:'generate'|'product'|'remainder';done:number;total:number;note:string;level?:number;bitLengths?:number[]}
+export interface SerializedCorpus {keys:{n:string;rp:number;rq:number}[];distinctSeeds:number;rejectedEqual:number;observedSeedPairs:number;ms:number}
+export interface SerializedCorpusAttack {
+  splits:{raw:string;factor:string|null;repeated:number[];sharedWith:number[];fallback:boolean}[];
+  verdicts:Verdict[]; products:number[][];remainders:number[][];ms:number;comparisons:number|null;
+}
 
 export interface SerializedOutcome {
   algorithm: AlgorithmId;
@@ -16,6 +28,7 @@ export interface SerializedOutcome {
 }
 
 export type WorkerRequest =
+  | CorpusRequest
   | {
       kind: 'factor';
       jobId: number;
@@ -46,6 +59,9 @@ export interface SerializedGenerated {
 }
 
 export type WorkerResponse =
+  | CorpusProgress
+  | {kind:'corpus-generated';jobId:number;result:SerializedCorpus}
+  | {kind:'corpus-attacked';jobId:number;result:SerializedCorpusAttack}
   | { kind: 'progress'; jobId: number; algorithm: AlgorithmId; done: number; total: number; note: string }
   | { kind: 'factored'; jobId: number; outcome: SerializedOutcome }
   | { kind: 'generated'; jobId: number; result: SerializedGenerated }

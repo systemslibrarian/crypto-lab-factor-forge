@@ -32,6 +32,10 @@ import type {
   SerializedOutcome,
   WorkerRequest,
   WorkerResponse,
+  CorpusRequest,
+  CorpusProgress,
+  SerializedCorpus,
+  SerializedCorpusAttack,
 } from '../worker/protocol';
 import type { TreeNode } from '../factor/tree';
 
@@ -50,6 +54,7 @@ type Resolver = {
   resolve: (value: WorkerResponse) => void;
   reject: (reason: Error) => void;
   onProgress?: (done: number, total: number, note: string) => void;
+  onCorpusProgress?: (progress:CorpusProgress)=>void;
 };
 
 const CANCELLED = 'cancelled';
@@ -106,6 +111,7 @@ export class Runner {
   private dispatch(msg: WorkerResponse): void {
     const entry = this.pending.get(msg.jobId);
     if (!entry) return;
+    if(msg.kind==='corpus-progress'){entry.onCorpusProgress?.(msg);return;}
     if (msg.kind === 'progress') {
       entry.onProgress?.(msg.done, msg.total, msg.note);
       return;
@@ -135,13 +141,27 @@ export class Runner {
     return !this.inlineOnly;
   }
 
-  private send(req: RequestBody, onProgress?: Resolver['onProgress']): Promise<WorkerResponse> {
+  private send(req: RequestBody, onProgress?: Resolver['onProgress'],onCorpusProgress?:Resolver['onCorpusProgress']): Promise<WorkerResponse> {
     const worker = this.ensureWorker();
     if (!worker) return Promise.reject(new Error('no worker'));
     const jobId = this.nextId++;
     return new Promise((resolve, reject) => {
-      this.pending.set(jobId, { resolve, reject, onProgress });
+      this.pending.set(jobId, { resolve, reject, onProgress, onCorpusProgress });
       worker.postMessage({ ...req, jobId } as WorkerRequest);
+    });
+  }
+
+  /** Full-size corpus work requires a worker so cancellation remains truthful. */
+  corpus(request:DistributiveOmit<CorpusRequest,'jobId'>,onProgress?:(progress:CorpusProgress)=>void):Promise<RunResult<{result:SerializedCorpus|SerializedCorpusAttack}>> {
+    return this.enqueue(async()=>{
+      try {
+        const response=await this.send(request,undefined,onProgress);
+        if(response.kind!=='corpus-generated'&&response.kind!=='corpus-attacked')throw new Error('Unexpected corpus response');
+        return {ok:true,result:response.result};
+      } catch(error) {
+        const message=error instanceof Error?error.message:String(error);
+        return message===CANCELLED?{ok:false,kind:'cancelled'}:{ok:false,kind:'error',message:message==='no worker'?'Corpus generation requires a module worker; no blocking fallback is used.':message};
+      }
     });
   }
 

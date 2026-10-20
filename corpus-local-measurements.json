@@ -1,0 +1,30 @@
+{
+  "measuredOn": "2026-10-20",
+  "environment": "local Node 24; measured generation only; no extrapolation",
+  "runs": [
+    {
+      "K": 64,
+      "s": 10,
+      "bits": 256,
+      "seed": "c0ffee",
+      "ms": 993.535513,
+      "distinct": 120
+    },
+    {
+      "K": 128,
+      "s": 10,
+      "bits": 256,
+      "seed": "c0ffee",
+      "ms": 1959.450941,
+      "distinct": 228
+    },
+    {
+      "K": 16,
+      "s": 10,
+      "bits": 1024,
+      "seed": "c0ffee",
+      "ms": 9946.336052,
+      "distinct": 29
+    }
+  ]
+}

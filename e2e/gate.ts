@@ -277,7 +277,7 @@ export async function boot(page: Page, theme: 'dark'): Promise<void> {
 
   // ── The page really rendered ────────────────────────────────────────────
   await expect(page.locator('main')).toHaveCount(1);
-  await expect(page.locator('.tab-btn')).toHaveCount(5);
+  await expect(page.locator('.tab-btn')).toHaveCount(6);
 
   // The shared skip link points at an id that exists. axe's skip-link rule is
   // best-practice, not WCAG-tagged, so `withTags` never runs it — a skip link
@@ -303,7 +303,7 @@ export async function boot(page: Page, theme: 'dark'): Promise<void> {
   // "empty" is this lab's tell that a renderer threw (see `watchPageErrors`).
   await expect(page.locator('#panel-race .race-row')).toHaveCount(7);
   await expect(page.locator('#panel-race .race-row[data-state="idle"]')).toHaveCount(7);
-  for (const id of ['forge', 'trace', 'ladder', 'shor']) {
+  for (const id of ['forge', 'trace', 'ladder', 'shor', 'corpus']) {
     await expect(page.locator(`#panel-${id}`)).toBeHidden();
     await expect(page.locator(`#panel-${id}`)).toBeEmpty();
   }
@@ -972,6 +972,8 @@ export async function driveAllStates(page: Page, theme: string): Promise<void> {
   await expect(page.locator('#panel-shor .verdict-alarm')).toBeVisible();
   await scanAt('Shor: the rules table, the comparison table and the alarm verdict');
 
+  await driveCorpusStates(page, theme);
+
   // ── Hover, which persists after a click ─────────────────────────────────
   await page.getByRole('tab', { name: 'Factor N' }).hover();
   await scanAt('an inactive tab hovered — its surface-2 fill repainted');
@@ -993,4 +995,15 @@ export async function driveAllStates(page: Page, theme: string): Promise<void> {
 
   await page.getByRole('tab', { name: 'Factor N' }).focus();
   await scanAt('the active tab focused');
+}
+
+export async function driveCorpusStates(page:Page,label:string):Promise<void>{
+  await page.getByRole('tab',{name:'Shared Primes',exact:true}).click();
+  await scan(page,`${label} / corpus arrival`);
+  await page.locator('#corpus-count').fill('8');await page.locator('#corpus-entropy').fill('3');await page.locator('#corpus-entropy').dispatchEvent('input');
+  await page.locator('#corpus-generate').click();await expect(page.locator('#corpus-status')).toContainText('Corpus ready',{timeout:120000});await scan(page,`${label} / corpus generated`);
+  await page.locator('#corpus-batch').click();await expect(page.locator('#corpus-status')).toContainText('Batch GCD completed');await page.locator('#corpus-naive').click();await expect(page.locator('#corpus-status')).toContainText('Both routes agree');await scan(page,`${label} / corpus trees recovery timings`);
+  await page.locator('#corpus-audit').click();await expect(page.locator('#corpus-status')).toContainText('Four bounded');await scan(page,`${label} / corpus audit`);
+  await page.locator('#corpus-entropy').fill('24');await page.locator('#corpus-entropy').dispatchEvent('input');await page.locator('#corpus-generate').click();await expect(page.locator('#corpus-status')).toContainText('Corpus ready');await page.locator('#corpus-batch').click();await expect(page.locator('#corpus-status')).toContainText('Batch GCD completed');await scan(page,`${label} / corpus no collisions`);
+  await page.locator('#corpus-count').fill('128');await page.locator('#corpus-bits').selectOption('1024');await page.locator('#corpus-generate').click();await page.locator('#corpus-cancel').click();await scan(page,`${label} / corpus cancelled`);
 }

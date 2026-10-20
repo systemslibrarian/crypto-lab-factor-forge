@@ -594,3 +594,21 @@ details[open] summary { margin-bottom: 0.4rem; }
 @media (prefers-reduced-motion: reduce) {
   * { transition-duration: 0.001ms !important; animation-duration: 0.001ms !important; }
 }
+#panel-corpus { min-width: 0; overflow-wrap: anywhere; }
+.corpus-controls { display: grid; grid-template-columns: repeat(auto-fit,minmax(12rem,1fr)); gap: 1rem; }
+.corpus-field { display: flex; flex-direction: column; gap: .35rem; min-width: 0; }
+.corpus-field input, .corpus-field select { width: 100%; min-width: 0; padding: .5rem; font: inherit; }
+#corpus-entropy { margin: 0; box-sizing: border-box; }
+.corpus-actions { display: flex; flex-wrap: wrap; gap: .6rem; margin: 1rem 0; }
+.corpus-trees { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 1rem; }
+.corpus-tree-scroll { overflow-x: auto; max-width: 100%; }
+.corpus-tree-level { display: flex; align-items: center; gap: .4rem; width: max-content; margin: .6rem 0; }
+.corpus-node { display: inline-block; border: 1px solid currentColor; border-radius: .3rem; padding: .3rem; white-space: nowrap; }
+#corpus-results code { display: block; overflow-wrap: anywhere; max-width: 22rem; min-width: 8rem; }
+#corpus-results .verdict[data-key] { display: grid; grid-template-columns: 1em minmax(0,1fr); min-width: 16rem; max-width: 24rem; }
+#corpus-results .verdict[data-key] > code, #corpus-results .verdict[data-key] > p { grid-column: 2; margin: .3rem 0; }
+.corpus-time-row { margin: .4rem 0; }
+.corpus-time-bar { display: block; height: .5rem; background: currentColor; }
+.corpus-time-naive { background: repeating-linear-gradient(90deg,currentColor 0 4px,transparent 4px 7px); }
+.corpus-timing { margin: 1rem 0; }
+@media(max-width:640px) { .corpus-trees, .corpus-controls { grid-template-columns: minmax(0,1fr); } }

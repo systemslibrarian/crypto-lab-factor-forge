@@ -9,6 +9,10 @@ import { REGISTRY } from '../factor/registry';
 import { factorTree } from '../factor/tree';
 import { generateWeakN } from '../gen/weak';
 import type { WorkerRequest, WorkerResponse } from './protocol';
+import { generateCorpus, CORPUS_MAX_KEYS } from '../corpus/generate';
+import { batchGcd, pairwiseGcd } from '../corpus/batchgcd';
+import { verifyCorpus } from '../corpus/verify';
+import { bitLength } from '../factor/bigint';
 
 const post = (msg: WorkerResponse): void => {
   (self as unknown as Worker).postMessage(msg);
@@ -17,6 +21,24 @@ const post = (msg: WorkerResponse): void => {
 self.onmessage = (event: MessageEvent<WorkerRequest>) => {
   const req = event.data;
   try {
+    if(req.kind==='corpus') {
+      const start=performance.now();
+      if(req.operation==='generate') {
+        if(![256,512,1024].includes(req.bits))throw new Error('Choose 256, 512 or 1024-bit primes.');
+        const result=generateCorpus(req,(done,total,note)=>post({kind:'corpus-progress',jobId:req.jobId,stage:'generate',done,total,note}));
+        post({kind:'corpus-generated',jobId:req.jobId,result:{...result,keys:result.keys.map(k=>({...k,n:String(k.n)})),ms:performance.now()-start}});
+      } else {
+        if(req.moduli.length<2||req.moduli.length>CORPUS_MAX_KEYS||req.moduli.some(n=>!/^\d{1,617}$/.test(n)))throw new Error('CORPUS_BUDGET: invalid modulus count or size');
+        const ns=req.moduli.map(BigInt);
+        const result=req.operation==='batch'?batchGcd(ns,(stage,level,values)=>post({kind:'corpus-progress',jobId:req.jobId,stage,level,bitLengths:values.map(bitLength),done:level,total:Math.ceil(Math.log2(ns.length)),note:`${stage} level ${level}`})):pairwiseGcd(ns);
+        const ms=performance.now()-start;
+        const verdicts=verifyCorpus(ns,result.splits);
+        post({kind:'corpus-attacked',jobId:req.jobId,result:{splits:result.splits.map(s=>({...s,raw:String(s.raw),factor:s.factor===null?null:String(s.factor)})),verdicts,
+          products:'products' in result?result.products.map(row=>row.map(bitLength)):[],remainders:'remainders' in result?result.remainders.map(row=>row.map(bitLength)):[],
+          ms,comparisons:'comparisons' in result?result.comparisons:null}});
+      }
+      return;
+    }
     if (req.kind === 'factor') {
       const n = BigInt(req.n);
       // Seeded: every random choice this run makes follows from req.seed, so the

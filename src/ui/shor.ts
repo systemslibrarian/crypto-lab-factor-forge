@@ -78,7 +78,7 @@ const RULES: Rule[] = [
     rule: 'Use a fresh modulus per key; never share p between moduli',
     defends: 'Batch GCD across a corpus of keys',
     because:
-      'Two moduli sharing a prime are split by one gcd — not a method on this page, but the same lesson: the attack finds the structure you left behind.',
+      'Two moduli sharing a prime are split by one gcd. The Shared Primes tab now runs this attack across a corpus with product and remainder trees: the attack finds reused randomness across keys.',
     helpsVsShor: false,
   },
 ];

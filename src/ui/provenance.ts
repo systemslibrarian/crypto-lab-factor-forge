@@ -101,7 +101,7 @@ export function restoreFromUrl(limits: Record<string, { min: number; max: number
     else rejected.push(`cap=${cap.slice(0, 24)}`);
   }
   const tab = q.get('tab');
-  const known = ['race', 'forge', 'trace', 'ladder', 'shor'];
+  const known = ['race', 'forge', 'trace', 'ladder', 'shor', 'corpus'];
   return {
     n,
     params,

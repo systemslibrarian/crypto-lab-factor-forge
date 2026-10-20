@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test';
 import {
   boot,
   driveAllStates,
+  driveCorpusStates,
   expectBaselineNotStale,
   NARROW,
   REFLOW,
@@ -81,11 +82,13 @@ for (const theme of ['dark'] as const) {
       ['Trace', '#panel-trace'],
       ['The Ladder', '#panel-ladder'],
       ['Shor', '#panel-shor'],
+      ['Shared Primes', '#panel-corpus'],
     ] as const) {
       await page.getByRole('tab', { name: new RegExp(name) }).click();
       await expect(page.locator(panel)).toBeVisible();
       await scan(page, `${theme} @320px / ${name}`);
     }
+    await driveCorpusStates(page, `${theme} @320px`);
     expect(errors, errors.join('\n')).toEqual([]);
     reportCollected();
   });

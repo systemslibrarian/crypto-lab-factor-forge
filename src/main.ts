@@ -11,6 +11,7 @@ import { restoreFromUrl } from './ui/provenance';
 import { setCanceller, setN, state, subscribe } from './ui/state';
 import { buildLabel } from './ui/build';
 import { VECTORS } from './factor/vectors';
+import { mountCorpusPanel } from './ui/corpus';
 
 const runner = new Runner();
 
@@ -32,6 +33,7 @@ const MOUNTERS: Record<string, (root: HTMLElement) => () => void> = {
   trace: (root) => mountTracePanel(root),
   ladder: (root) => mountLadderPanel(root),
   shor: (root) => mountShorPanel(root),
+  corpus: (root) => mountCorpusPanel(root, runner),
 };
 
 function activate(panel: string): void {

@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { expect, test, type Page } from '@playwright/test';
 import { isqrt, isqrtCeil, modinv } from '../src/factor/bigint';
 import { factorSmall, largestPrimeFactor } from '../src/factor/primality';
@@ -875,4 +876,104 @@ test('all content is inside a landmark, with exactly one banner and one main', a
     ).length
   );
   expect(nested).toBe(0);
+});
+
+// Corpus claims deliberately use no implementation imports: Euclid, square-and-
+// multiply and Miller–Rabin are written here from the public values on screen.
+const corpusGcd=(a:bigint,b:bigint):bigint=>{while(b)[a,b]=[b,a%b];return a;};
+const corpusPow=(a:bigint,e:bigint,n:bigint):bigint=>{let r=1n;while(e){if(e&1n)r=r*a%n;a=a*a%n;e>>=1n;}return r;};
+function corpusPrime(n:bigint):boolean{
+  if(n<2n)return false;for(const p of [2n,3n,5n,7n,11n,13n,17n,19n,23n]){if(n===p)return true;if(n%p===0n)return false;}
+  let d=n-1n,s=0;while(!(d&1n)){d>>=1n;s++;}
+  for(const a of [2n,3n,5n,7n,11n,13n,17n,19n,23n]){
+    let x=corpusPow(a,d,n);if(x===1n||x===n-1n)continue;let hit=false;
+    for(let r=1;r<s;r++){x=x*x%n;if(x===n-1n){hit=true;break;}}if(!hit)return false;
+  }return true;
+}
+async function corpusGenerate(page:Page,query=''):Promise<void>{
+  await page.goto(`?tab=corpus${query}`);await page.locator('#corpus-generate').click();
+  await expect(page.locator('#corpus-status')).toContainText('Corpus ready',{timeout:120000});
+}
+async function corpusAttack(page:Page):Promise<void>{
+  await page.locator('#corpus-batch').click();await expect(page.locator('#corpus-status')).toContainText('Batch GCD completed',{timeout:120000});
+}
+async function corpusCheck(page:Page):Promise<bigint[]>{
+  const ns=(await page.locator('[data-modulus]').allTextContents()).map(BigInt),p=ns.reduce((a,b)=>a*b,1n);
+  for(let i=0;i<ns.length;i++){
+    const sharing=ns.flatMap((n,j)=>i!==j&&corpusGcd(ns[i],n)>1n?[j]:[]);
+    await expect(page.locator(`[data-shares="${i}"]`)).toHaveText(sharing.length?sharing.join(', '):'none');
+    const raw=corpusGcd(ns[i],p/ns[i]);await expect(page.locator(`[data-raw-gcd="${i}"]`)).toContainText(`g${i} = ${raw}`);
+    const expected=ns.some((n,j)=>i!==j&&corpusGcd(ns[i],n)>1n&&corpusGcd(ns[i],n)<ns[i]);
+    await expect(page.locator(`[data-key="${i}"]`)).toHaveAttribute('data-compromised',String(expected));
+    const f=page.locator(`[data-factor="${i}"]`);
+    if(expected){const factor=BigInt((await f.textContent())!);expect(ns[i]%factor).toBe(0n);expect(corpusPrime(factor)).toBe(true);expect(corpusPrime(ns[i]/factor)).toBe(true);await expect(page.locator(`[data-verified="${i}"]`)).toContainText('VERIFIED: p × q = N');await expect(page.locator(`[data-key="${i}"]`)).toHaveClass('verdict verdict-alarm');}
+    else {await expect(f).toHaveCount(0);await expect(page.locator(`[data-key="${i}"]`)).toHaveClass('verdict verdict-idle');}
+  }
+  let level=0,row=ns.slice();
+  while(true){
+    const rendered=await page.locator(`[data-tree="product"][data-level="${level}"] [data-bits]`).evaluateAll(es=>es.map(e=>Number(e.getAttribute('data-bits'))));expect(rendered).toEqual(row.map(n=>n.toString(2).length));
+    const remainders=await page.locator(`[data-tree="remainder"][data-level="${level}"] [data-bits]`).evaluateAll(es=>es.map(e=>Number(e.getAttribute('data-bits'))));expect(remainders).toEqual(row.map(n=>{const r=p%(n*n);return r===0n?0:r.toString(2).length;}));
+    if(row.length===1)break;const next=[];for(let i=0;i<row.length;i+=2)next.push(row[i]*(row[i+1]??1n));row=next;level++;
+  }
+  const sum=ns.reduce((s,n)=>s+n.toString(2).length,0),root=p.toString(2).length;expect(root).toBeLessThanOrEqual(sum);expect(root).toBeGreaterThan(sum-ns.length);
+  return ns;
+}
+
+test('corpus public GCD transcript and verified recovery independently match all moduli',async({page})=>{
+  await corpusGenerate(page);await corpusAttack(page);const ns=await corpusCheck(page);expect(ns.length).toBe(64);
+  await page.locator('#corpus-naive').click();await expect(page.locator('#corpus-status')).toContainText('2016 pairwise comparisons');await expect(page.locator('#corpus-status')).toContainText('Both routes agree');
+  const before=await page.locator('#corpus-results').textContent();await page.locator('#corpus-entropy').dispatchEvent('input');expect(await page.locator('#corpus-results').textContent()).toBe(before);
+  await page.locator('#corpus-entropy').fill('11');await page.locator('#corpus-entropy').dispatchEvent('input');await expect(page.locator('#corpus-results')).toBeEmpty();await expect(page.locator('#corpus-status')).toContainText('retired');
+});
+
+test('corpus observed collisions follow the seeded prime model and independent public GCDs',async({page})=>{
+  await corpusGenerate(page,'&ck=12&cs=3&cseed=c0ffee');await corpusAttack(page);await corpusCheck(page);
+  // This seed's 12-key graph is pinned by the generator test, independently of
+  // prime size. Fresh unseeded primes destroy it even if seed counters lie.
+  await expect(page.locator('[data-compromised="true"]')).toHaveCount(12);
+  await expect(page.locator('#corpus-observed')).toContainText('Observed seed-draw collision pairs:');
+});
+
+test('corpus negative claim coexists with four bounded give-ups and a verified factor',async({page})=>{
+  await corpusGenerate(page);await corpusAttack(page);await page.locator('#corpus-audit').click();await expect(page.locator('#corpus-status')).toContainText('Four bounded',{timeout:120000});
+  for(const id of ['trial','fermat','pminus1','pplus1'])await expect(page.locator(`[data-audit="${id}"]`)).toContainText('GAVE UP');
+  await expect(page.locator('#corpus-shape')).toContainText('Not a perfect power');
+  const i=await page.locator('#corpus-victim').inputValue(),n=BigInt((await page.locator(`[data-modulus="${i}"]`).textContent())!),factor=BigInt((await page.locator(`[data-factor="${i}"]`).textContent())!);
+  expect(n%factor).toBe(0n);expect(corpusPrime(factor)).toBe(true);
+  await expect(page.locator('#corpus-negative-fixture .verdict-alarm')).toContainText('BOUNDED PER-KEY SEARCHES GAVE UP — AND FACTORED');
+  await expect(page.locator('#corpus-negative')).toBeVisible();await expect(page.locator('#corpus-negative')).toHaveText('The four bounded per-key searches found no factor, yet the same public key was factored by the corpus. Giving up is not a certificate of security.');
+});
+
+test('corpus no-collision repeated-modulus budget and cancellation paths stay honest',async({page})=>{
+  await corpusGenerate(page,'&ck=8&cs=24');await corpusAttack(page);await corpusCheck(page);await expect(page.locator('[data-compromised="true"]')).toHaveCount(0);
+  await corpusGenerate(page,'&ck=4&cs=1');await corpusAttack(page);await corpusCheck(page);await expect(page.locator('#corpus-results')).toContainText('The same key twice');await expect(page.locator('[data-compromised="true"]')).toHaveCount(0);
+  await page.locator('#corpus-count').fill('129');await page.locator('#corpus-generate').click();await expect(page.locator('#corpus-status')).toContainText('CORPUS_BUDGET');
+  await page.locator('#corpus-count').fill('128');await page.locator('#corpus-bits').selectOption('1024');await page.locator('#corpus-entropy').fill('24');await page.locator('#corpus-entropy').dispatchEvent('input');
+  await page.locator('#corpus-generate').click();await page.locator('#corpus-cancel').click();await expect(page.locator('#corpus-status')).toContainText('Cancelled');await expect(page.locator('[data-compromised="true"]')).toHaveCount(0);await expect(page.locator('#corpus-batch')).toBeDisabled();
+  await corpusGenerate(page,'&ck=8&cs=3');
+  // A user cancellation is triggered at the first real product-level render.
+  // No worker result, modulus, or verdict is mocked.
+  await page.evaluate(()=>{const box=document.querySelector('#corpus-trees')!;const observer=new MutationObserver(()=>{if(box.querySelector('[data-tree="product"]')){observer.disconnect();(document.querySelector('#corpus-cancel') as HTMLButtonElement).click();}});observer.observe(box,{childList:true,subtree:true});});
+  await page.locator('#corpus-batch').click();await expect(page.locator('#corpus-status')).toContainText('Cancelled');await expect(page.locator('#corpus-trees')).toContainText('cancelled, partial levels');await expect(page.locator('[data-factor]')).toHaveCount(0);
+});
+
+test('corpus export and permalink carry the whole experiment and invalid URLs are refused',async({page})=>{
+  await corpusGenerate(page,'&ck=4&cs=3&cb=512&cseed=1234');await corpusAttack(page);
+  const downloadPromise=page.waitForEvent('download');await page.locator('#corpus-export').click();const download=await downloadPromise,stream=await download.createReadStream();let text='';for await(const chunk of stream!)text+=chunk.toString();const record=JSON.parse(text);
+  expect(record.context).toEqual({K:4,s:3,bits:512,seed:'1234'});expect(record.build.commit).toMatch(/^[0-9a-f]{40}$/);expect(record.generated.moduli).toHaveLength(4);
+  expect(record.generated.moduli.every((n:string)=>[1023,1024].includes(BigInt(n).toString(2).length))).toBe(true);
+  await page.evaluate(()=>{Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:async(text:string)=>{(window as unknown as {copied:string}).copied=text;}}});});
+  await page.locator('#corpus-link').click();const link=await page.evaluate(()=>(window as unknown as {copied:string}).copied),url=new URL(link);
+  expect(Object.fromEntries(url.searchParams)).toMatchObject({tab:'corpus',ck:'4',cs:'3',cb:'512',cseed:'1234',cbuild:record.build.commit});
+  await page.goto('?tab=corpus&cs=99&ck=999&cb=9&cseed=oops');await expect(page.locator('#corpus-status')).toContainText('Rejected invalid corpus permalink fields');await expect(page.locator('#corpus-entropy')).toHaveValue('10');
+});
+
+// Mutation-only transport check: a stale served script is inconclusive, never a kill.
+test.afterEach(async({page})=>{
+ if(process.env.MUTATION_ASSETS){
+  const expected=JSON.parse(process.env.MUTATION_ASSETS) as Record<string,string>;
+  const src=await page.locator('script[type="module"]').getAttribute('src');
+  const response=await page.request.get(src!),digest=createHash('sha256').update(await response.body()).digest('hex');
+  if(expected[src!.split('/').at(-1)!]!==digest)throw new Error('MUTATION_ASSET_MISMATCH: served script differs from the built artifact');
+ }
 });
