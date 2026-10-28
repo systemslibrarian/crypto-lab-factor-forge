@@ -715,17 +715,64 @@ test('a focused element is never hidden behind the sticky bar', async ({ page })
   await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur?.());
   for (let i = 0; i < 30; i++) {
     await page.keyboard.press('Tab');
-    const hit = await page.evaluate(() => {
+    const hit = await page.evaluate(async () => {
       const a = document.activeElement as HTMLElement | null;
       const bar = document.querySelector('.cl-topbar');
       if (!a || a === document.body || !bar) return null;
       // The bar's own controls sit inside it and are not obscured BY it.
       if (bar.contains(a)) return null;
+
+      // Measure only once the focused element has stopped moving. The skip link
+      // animates `top` from -3rem to 0 over 150ms on :focus, so a rect read
+      // straight after the Tab catches it mid-flight. That is the whole of the
+      // `a top=-31 bar=65` failure seen on CI: -31 is neither the resting
+      // position nor the hidden one, it is a frame between the two. The same
+      // test passed locally because a faster round-trip read it at -48, before
+      // the transition had started. Both readings were of a value in motion.
+      const settled = await new Promise<DOMRect>((resolve) => {
+        let last = a.getBoundingClientRect();
+        let still = 0;
+        const tick = () => {
+          const now = a.getBoundingClientRect();
+          still = Math.abs(now.top - last.top) < 0.5 && Math.abs(now.left - last.left) < 0.5 ? still + 1 : 0;
+          last = now;
+          if (still >= 3) resolve(now);
+          else requestAnimationFrame(tick);
+        };
+        requestAnimationFrame(tick);
+      });
+      if (settled.height === 0 || settled.width === 0) return null;
+
       const b = bar.getBoundingClientRect();
-      const e = a.getBoundingClientRect();
-      if (e.height === 0) return null;
-      return e.top < b.bottom && e.bottom > b.top
-        ? `${a.tagName.toLowerCase()}${a.id ? '#' + a.id : ''} top=${Math.round(e.top)} bar=${Math.round(b.bottom)}`
+      if (!(settled.top < b.bottom && settled.bottom > b.top)) return null;
+
+      // Sharing the bar's rectangle is not the same as being hidden by it. The
+      // skip link is positioned over the bar on purpose and paints in front of
+      // it (z-index 1001 against the bar's 1000), so a box comparison calls a
+      // fully visible control obscured. SC 2.4.11 is about what the user can
+      // actually see, so ask the renderer which element is in front instead.
+      // Points are inset 12px because the skip link's 10px bottom radius puts
+      // its own corners outside its box, where the hit test reads through.
+      const inset = 12;
+      const xs = [settled.left + inset, settled.left + settled.width / 2, settled.right - inset];
+      const ys = [settled.top + inset, settled.top + settled.height / 2, settled.bottom - inset];
+      const samples: { x: number; y: number }[] = [];
+      for (const x of xs) for (const y of ys) {
+        if (y >= b.top && y <= b.bottom) samples.push({ x, y });
+      }
+      if (samples.length === 0) return null;
+
+      const covered = samples.filter(({ x, y }) => {
+        // Off the viewport is not "in front of", it is worse: nothing to see.
+        if (x < 0 || y < 0 || x > window.innerWidth || y > window.innerHeight) return true;
+        const front = document.elementFromPoint(x, y);
+        if (!front) return true;
+        if (front === a || a.contains(front) || front.contains(a)) return false;
+        return front === bar || bar.contains(front);
+      });
+
+      return covered.length > 0
+        ? `${a.tagName.toLowerCase()}${a.id ? '#' + a.id : ''} top=${Math.round(settled.top)} bar=${Math.round(b.bottom)} covered=${covered.length}/${samples.length}`
         : null;
     });
     if (hit) obscured.push(hit);
