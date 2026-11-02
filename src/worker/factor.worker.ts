@@ -5,7 +5,7 @@
  */
 
 import { withSeed } from '../factor/rng';
-import { REGISTRY } from '../factor/registry';
+import { isAlgorithmId, REGISTRY } from '../factor/registry';
 import { factorTree } from '../factor/tree';
 import { generateWeakN } from '../gen/weak';
 import type { WorkerRequest, WorkerResponse } from './protocol';
@@ -40,6 +40,10 @@ self.onmessage = (event: MessageEvent<WorkerRequest>) => {
       return;
     }
     if (req.kind === 'factor') {
+      // `algorithm` arrives over postMessage, so it is an unchecked string here
+      // however it is typed. Resolve it through the registry's own keys before
+      // calling what it names.
+      if (!isAlgorithmId(req.algorithm)) throw new Error(`Unknown algorithm: ${req.algorithm}`);
       const n = BigInt(req.n);
       // Seeded: every random choice this run makes follows from req.seed, so the
       // run record can name a seed that actually reproduces the search.

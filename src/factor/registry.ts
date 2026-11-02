@@ -23,6 +23,23 @@ export const REGISTRY: Record<AlgorithmId, FactorFn> = {
   qs: factorQS,
 };
 
+/**
+ * The algorithm ids, as a runtime check rather than a type assertion.
+ *
+ * The worker receives its request over postMessage, where `algorithm` is a
+ * string whatever the type says, and uses it to index REGISTRY and call what
+ * comes back. Without this, a name that is not an algorithm either calls
+ * undefined or -- worse -- resolves an INHERITED property: `constructor` and
+ * `valueOf` are both reachable on a plain object literal. `hasOwnProperty` is
+ * what excludes those, so this deliberately does not use `in`.
+ *
+ * Derived from REGISTRY's own keys, so adding an algorithm cannot leave a
+ * second list behind.
+ */
+export function isAlgorithmId(value: string): value is AlgorithmId {
+  return Object.prototype.hasOwnProperty.call(REGISTRY, value);
+}
+
 export const ALGORITHM_ORDER: AlgorithmId[] = [
   'trial',
   'fermat',
