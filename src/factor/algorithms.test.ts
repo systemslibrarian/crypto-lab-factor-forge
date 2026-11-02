@@ -3,7 +3,7 @@ import { isqrtCeil } from './bigint';
 import { curveOrder, suyamaCurve } from './ecm';
 import { lucasV } from './pplus1';
 import { gf2NullSpace, smoothVector } from './qs';
-import { ALGORITHM_ORDER, isAlgorithmId, REGISTRY } from './registry';
+import { ALGORITHM_ORDER, REGISTRY, resolveAlgorithm } from './registry';
 import { largestPrimeFactor } from './primality';
 import { DEFAULT_PARAMS, type AlgorithmId } from './types';
 import { VECTORS } from './vectors';
@@ -237,24 +237,24 @@ describe('Lucas sequences', () => {
 });
 
 /** The worker resolves an algorithm name from a postMessage through this. */
-describe('isAlgorithmId gates the registry lookup', () => {
-  it('accepts exactly the registry keys, and ALGORITHM_ORDER agrees with them', () => {
-    for (const id of Object.keys(REGISTRY)) expect(isAlgorithmId(id), id).toBe(true);
+describe('resolveAlgorithm gates the registry lookup', () => {
+  it('resolves exactly the registry keys, to the registry function', () => {
+    for (const id of ALGORITHM_ORDER) expect(resolveAlgorithm(id)).toBe(REGISTRY[id]);
     expect([...ALGORITHM_ORDER].sort()).toEqual(Object.keys(REGISTRY).sort());
   });
 
-  it('rejects inherited properties, which is the reason this is not an `in` check', () => {
+  it('refuses inherited properties, which is why this is not an `in` check', () => {
     for (const bad of ['constructor', 'valueOf', 'toString', '__proto__', 'hasOwnProperty']) {
-      expect(isAlgorithmId(bad), bad).toBe(false);
-      // The point: `in` would have said yes to every one of these, and the
-      // worker would then have called whatever it resolved.
+      expect(resolveAlgorithm(bad), bad).toBeNull();
+      // The point: `in` says yes to every one of these, and the worker would
+      // then have called whatever it resolved.
       expect(bad in REGISTRY, `${bad} via in`).toBe(true);
     }
   });
 
-  it('rejects unknown and mis-cased names', () => {
+  it('refuses unknown and mis-cased names', () => {
     for (const bad of ['', 'Trial', 'rho ', 'pollard', 'qs2']) {
-      expect(isAlgorithmId(bad), bad).toBe(false);
+      expect(resolveAlgorithm(bad), bad).toBeNull();
     }
   });
 });

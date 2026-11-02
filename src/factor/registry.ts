@@ -23,23 +23,6 @@ export const REGISTRY: Record<AlgorithmId, FactorFn> = {
   qs: factorQS,
 };
 
-/**
- * The algorithm ids, as a runtime check rather than a type assertion.
- *
- * The worker receives its request over postMessage, where `algorithm` is a
- * string whatever the type says, and uses it to index REGISTRY and call what
- * comes back. Without this, a name that is not an algorithm either calls
- * undefined or -- worse -- resolves an INHERITED property: `constructor` and
- * `valueOf` are both reachable on a plain object literal. `hasOwnProperty` is
- * what excludes those, so this deliberately does not use `in`.
- *
- * Derived from REGISTRY's own keys, so adding an algorithm cannot leave a
- * second list behind.
- */
-export function isAlgorithmId(value: string): value is AlgorithmId {
-  return Object.prototype.hasOwnProperty.call(REGISTRY, value);
-}
-
 export const ALGORITHM_ORDER: AlgorithmId[] = [
   'trial',
   'fermat',
@@ -52,4 +35,32 @@ export const ALGORITHM_ORDER: AlgorithmId[] = [
 
 export function run(id: AlgorithmId, ...args: Parameters<FactorFn>): ReturnType<FactorFn> {
   return REGISTRY[id](...args);
+}
+
+/**
+ * Resolve an algorithm NAME, from anywhere untrusted, to the function it names.
+ *
+ * The worker gets `algorithm` over postMessage, so it is an unchecked string
+ * there however it is typed. Two things make this safe, and the second is the
+ * one that is easy to get wrong:
+ *
+ * 1. An unknown name resolves to null rather than to undefined-called-as-a-
+ *    function. REGISTRY is a plain object literal, so it also INHERITS callable
+ *    properties -- `constructor`, `valueOf`, `toString` and `hasOwnProperty` are
+ *    all reachable on it. A membership test written with `in` says yes to every
+ *    one of those; the test for this function asserts that, so the mistake
+ *    cannot be reintroduced quietly.
+ * 2. The value used to index REGISTRY comes out of ALGORITHM_ORDER -- our own
+ *    constant -- rather than being the caller's string. Narrowing the caller's
+ *    string with a type predicate would satisfy the compiler and still leave
+ *    `REGISTRY[caller's string]` as the expression that runs, which is the
+ *    shape of the defect rather than its fix.
+ *
+ * ALGORITHM_ORDER is therefore load-bearing here, and a test pins it against
+ * REGISTRY's own keys so a new algorithm cannot be reachable from one and not
+ * the other.
+ */
+export function resolveAlgorithm(name: string): FactorFn | null {
+  const id = ALGORITHM_ORDER.find((candidate) => candidate === name);
+  return id === undefined ? null : REGISTRY[id];
 }
