@@ -62,7 +62,7 @@ production cryptography.**
 - There is no quantum simulation. The Shor row is a cost comparison and a link to
   [crypto-lab-shor](https://systemslibrarian.github.io/crypto-lab-shor/), not a computation.
 - Miller–Rabin is probabilistic. Below 3.317 × 10²⁴ the base set used here is proven deterministic
-  (Sorenson & Webster, *Math. Comp.* 2015) and the page says so; above it the page says the verdict
+  (Sorenson & Webster, *Math. Comp.* 86 (2017)) and the page says so; above it the page says the verdict
   rests on random bases.
 - Timings are real `performance.now()` measurements of your browser on your machine. They are
   never extrapolated upward to a larger size.
@@ -170,14 +170,27 @@ limitation is visible in that state.
 - **ECM** is the working tool for finding medium-sized factors of large numbers, and the reason
   the ECMNET/GMP-ECM record for a found factor sits in the 80-digit range even though the numbers
   it was found in were far larger.
-- **Pollard p−1** is why FIPS 186-4 and the older ANSI X9.31 required "strong" primes with a large
-  prime factor in `p − 1`; modern guidance largely dropped the requirement because ECM made the
-  distinction irrelevant at real key sizes.
+- **Pollard p−1**, together with Williams p+1, is why RSA key-generation standards describe
+  "primes with conditions". [FIPS 186-4](https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.186-4.pdf)
+  Appendix B.3.1 required a large prime factor (an *auxiliary prime*) in each of `p − 1`, `p + 1`,
+  `q − 1` and `q + 1` only for 1024-bit moduli, and let 2048- and 3072-bit moduli use plain random
+  probable or provable primes instead (Table B.2). Its stated reason (Appendix F.3) is that the
+  auxiliary-prime sizes make ECM — "against which there is no protection beyond choosing large p
+  and q" — a more effective attack than p−1, p+1 or cycling methods. FIPS 186-4 was
+  [withdrawn on 3 February 2024](https://csrc.nist.gov/pubs/fips/186-4/final);
+  [FIPS 186-5](https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.186-5.pdf) (Appendix A.1.1,
+  Table A.1) keeps the auxiliary-prime construction as one of two permitted methods for every
+  modulus of 2048 bits or more, and requires it for none.
 - **Fermat** is why "generate `q` near `p`" is a documented implementation bug rather than an
   optimisation — it has broken real keys, including a 2022 batch of hardware-generated RSA keys.
 - **The quadratic sieve** factored RSA-129 in 1994; the **number field sieve** has held the records
   since, and its `L_N[1/3, 1.923]` cost is what current RSA key-size recommendations are derived
   from.
+
+**Standards reviewed November 15, 2026:** the FIPS 186-4 and FIPS 186-5 statements above were
+checked against NIST's published texts on that date.
+On the same date the Sorenson–Webster citation was corrected from *Math. Comp.* **84** (2015)
+to **86** (2017) 985–1003 (DOI 10.1090/mcom/3134); 2015 is the arXiv preprint 1509.00864.
 
 ### Research update — October 5, 2026
 
@@ -364,8 +377,8 @@ RSA-rules table scrolls horizontally inside its own region at 320 px.
   **48** (1987) 243–264.
 - Lenstra, Lenstra, Manasse & Pollard, "The number field sieve", in *The Development of the Number
   Field Sieve*, LNM 1554 (1993). — **pointer only; not implemented here**
-- Sorenson & Webster, "Strong pseudoprimes to twelve prime bases", *Math. Comp.* **84** (2015). —
-  the deterministic Miller–Rabin base set
+- Sorenson & Webster, "Strong pseudoprimes to twelve prime bases", *Math. Comp.* **86** (2017)
+  985–1003 (arXiv 1509.00864, 2015). — the deterministic Miller–Rabin base set
 
 ---
 

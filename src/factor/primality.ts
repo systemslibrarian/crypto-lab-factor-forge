@@ -5,7 +5,7 @@
  * Miller-Rabin is a PROBABILISTIC test, and this lab says so wherever it
  * reports a result. Below psi_13 = 3,317,044,064,679,887,385,961,981 the first
  * thirteen prime bases are a proven-deterministic set (Sorenson & Webster,
- * "Strong pseudoprimes to twelve prime bases", Math. Comp. 84 (2015) 2483-2496,
+ * "Strong pseudoprimes to twelve prime bases", Math. Comp. 86 (2017) 985-1003,
  * which computes psi_12 and psi_13), so for every N this lab can actually factor
  * in a browser the answer is exact; above it we add random bases and the verdict
  * is stated as probabilistic. The base COUNT and the limit are two halves of one
@@ -31,7 +31,7 @@ const DETERMINISTIC_LIMIT = 3317044064679887385961981n;
 
 /**
  * The smallest composite that is a strong pseudoprime to all of the first k prime
- * bases, for k = 1..13 (Jaeschke 1993; Sorenson & Webster 2015). PSI[k] is the
+ * bases, for k = 1..13 (Jaeschke 1993; Sorenson & Webster 2017). PSI[k] is the
  * exact point at which k bases stop being enough, so PSI[DETERMINISTIC_BASES.length]
  * must equal DETERMINISTIC_LIMIT -- asserted in the tests rather than trusted.
  */
