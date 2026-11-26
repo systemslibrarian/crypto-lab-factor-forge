@@ -78,11 +78,13 @@ export function millerRabin(n: bigint, extraRounds = 16): PrimalityVerdict {
   if (!deterministic) {
     for (let i = 0; i < extraRounds; i++) bases.push(randomInRange(2n, n - 2n));
   }
+  let tested = 0;
   for (const a of bases) {
     if (a % n === 0n) continue;
-    if (witness(a)) return { prime: false, deterministic, bases: bases.length };
+    tested++;
+    if (witness(a)) return { prime: false, deterministic, bases: tested };
   }
-  return { prime: true, deterministic, bases: bases.length };
+  return { prime: true, deterministic, bases: tested };
 }
 
 export function isProbablePrime(n: bigint): boolean {

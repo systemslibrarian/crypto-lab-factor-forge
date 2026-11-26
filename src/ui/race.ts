@@ -289,9 +289,13 @@ function applyN(input: HTMLTextAreaElement, shapeBox: HTMLElement): void {
     );
     return;
   }
-  input.setAttribute('aria-invalid', 'false');
   const n = BigInt(raw);
+  input.setAttribute('aria-invalid', String(n < 2n));
   setN(n);
+  if (n < 2n) {
+    shapeBox.append(verdict('fail', 'N must be at least 2.', 'Choose an integer of 2 or greater for this exercise.'));
+    return;
+  }
 
   const shape = describeShape(n);
   const bits = shape.bits;
@@ -302,7 +306,9 @@ function applyN(input: HTMLTextAreaElement, shapeBox: HTMLElement): void {
         'alarm',
         shape.degenerate,
         shape.prime
-          ? `Miller-Rabin says prime${shape.primeDeterministic ? ' (proven-deterministic base set at this size)' : ' (probabilistic — random bases at this size)'}. Every method below will simply fail, and that failure is the correct answer.`
+          ? (shape.primeDeterministic
+              ? 'The small-prime and deterministic checks establish primality at this size.'
+              : 'The fixed and random bases all passed. This result alone does not prove primality.')
           : undefined
       )
     );

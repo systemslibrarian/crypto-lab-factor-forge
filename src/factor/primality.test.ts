@@ -118,3 +118,10 @@ describe('factorSmall', () => {
     expect(factorSmall(hard, 1000)).toBeNull();
   });
 });
+
+
+it('counts only bases actually tested before the first compositeness witness', () => {
+  // Both factors exceed the preliminary trial-division table.
+  const composite = 1009n * 1013n;
+  expect(millerRabin(composite)).toMatchObject({ prime: false, bases: 1 });
+});

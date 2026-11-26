@@ -1024,3 +1024,21 @@ test.afterEach(async({page})=>{
   if(expected[src!.split('/').at(-1)!]!==digest)throw new Error('MUTATION_ASSET_MISMATCH: served script differs from the built artifact');
  }
 });
+
+test('shape verdicts distinguish inputs below two and probable primes', async ({ page }) => {
+  await page.goto('./');
+  const input = page.locator('#n-input');
+  const shape = page.locator('#shape-box');
+  for (const n of ['0', '1']) {
+    await input.fill(n);
+    await expect(input).toHaveAttribute('aria-invalid', 'true');
+    await expect(shape).toContainText('at least 2');
+    await expect(shape).not.toContainText('peeled off');
+  }
+  await input.fill('2');
+  await expect(input).toHaveAttribute('aria-invalid', 'false');
+  await expect(shape).toContainText('N is prime');
+  await input.fill('618970019642690137449562111');
+  await expect(shape).toContainText('probably prime');
+  await expect(shape).not.toContainText('nothing to factor');
+});

@@ -135,6 +135,8 @@ export function describeShape(n: bigint): Shape {
     primeDeterministic: mr.deterministic,
     perfectPower: pp ? { base: String(pp.base), exponent: pp.exponent } : null,
     bits,
-    degenerate: mr.prime ? 'N is prime — there is nothing to factor.' : null,
+    degenerate: mr.prime
+      ? (mr.deterministic ? 'N is prime — there is nothing to factor.' : 'N passed the primality checks and is probably prime.')
+      : null,
   };
 }

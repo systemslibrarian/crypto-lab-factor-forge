@@ -87,3 +87,9 @@ describe('shape of N — the edge cases', () => {
     expect(shape.perfectPower).toBeNull();
   });
 });
+
+
+it('scopes the shape headline to the primality evidence', () => {
+  expect(describeShape(97n).degenerate).toContain('N is prime');
+  expect(describeShape((1n << 89n) - 1n).degenerate).toContain('probably prime');
+});
