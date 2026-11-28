@@ -150,7 +150,7 @@ export function factorECM(n: bigint, params: Params, budget: Budget): FactorOutc
 
   steps.push({
     label: 'Curve budget exhausted',
-    detail: `${params.ecmCurves} curves drawn, none with a B1-smooth order. Raising B1 or drawing more curves both help -- and unlike every other method here, neither depends on how big N is.`,
+    detail: `${params.ecmCurves} curves drawn, none with a B1-smooth order. Raising B1 or drawing more curves both improve the smooth-order chance governed chiefly by the smallest factor; arithmetic modulo a larger N still costs more on every curve.`,
   });
   return gaveUp(
     'ecm',
