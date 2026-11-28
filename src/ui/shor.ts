@@ -167,6 +167,14 @@ export function mountShorPanel(root: HTMLElement): () => void {
         'Safe primes, independently drawn primes, a large |p - q| — each of those removes a structure that only SOME moduli have, and with it a whole method. Shor asks for none of them. It reduces factoring to finding the period of x ↦ a^x mod N, and that period exists for every N and every a coprime to it: there is no modulus you can generate without one. Period-finding is where a quantum computer is polynomial and no classical method is known to be — known, because the classical hardness of factoring has never been proved either.'
       )
     );
+    cmp.append(
+      el('p', {
+        class: 'small',
+        id: 'shor-retry-boundary',
+        text:
+          'An order exists for every base a coprime to N, but not every randomized attempt produces factors. Choose a random coprime base, find its order r, and retry when r is odd or a^(r/2) ≡ -1 mod N. Prime powers are detected and handled classically.',
+      })
+    );
     // "Make the modulus larger" used to be described here as raising the qubit
     // count "from polynomial to slightly more polynomial". That is not a
     // well-formed statement about complexity: growing N moves you ALONG one
