@@ -634,6 +634,10 @@ test('the Shor row states plainly that no rule here defends against it', async (
   const noes = page.locator('#panel-shor .pill-bad');
   expect(await noes.count()).toBe(6);
   await expect(page.locator('#panel-shor .verdict-alarm')).toContainText('None of the six rules');
+  const retry = page.locator('#shor-retry-boundary');
+  await expect(retry).toContainText('retry when r is odd');
+  await expect(retry).toContainText('a^(r/2) ≡ -1 mod N');
+  await expect(retry).toContainText('Prime powers are detected and handled classically');
 });
 
 test('the ladder never plots a factor-driven method against the size of N', async ({ page }) => {
@@ -644,6 +648,9 @@ test('the ladder never plots a factor-driven method against the size of N', asyn
     page.locator('.ladder-card', { hasText: name }).first().locator('.ladder-axis').innerText();
   expect(await byName('Pollard rho')).toContain('SMALLEST factor');
   expect(await byName('Lenstra ECM')).toContain('SMALLEST factor');
+  await expect(page.locator('.ladder-card', { hasText: 'Lenstra ECM' }).first()).toContainText(
+    'Arithmetic modulo the full N still sets the cost of each curve'
+  );
   expect(await byName('Fermat')).toContain('|p - q|');
   expect(await byName('Pollard p-1')).toContain('p - 1');
   // "p ± 1", because which group caught it is decided by a computed Legendre
@@ -652,6 +659,9 @@ test('the ladder never plots a factor-driven method against the size of N', asyn
   expect(await byName('Quadratic sieve')).toContain('bits of N');
   // Only the methods that genuinely depend on N share the against-N chart.
   await expect(page.locator('.card', { hasText: 'The only fair' })).toContainText('Shor');
+  const panelText = await page.locator('#panel-ladder').innerText();
+  expect(panelText).not.toContain('does not depend on N');
+  expect(panelText).not.toContain('and nothing else');
 });
 
 /**
