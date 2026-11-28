@@ -3,10 +3,12 @@
  *
  * The visual rule this panel exists to obey: NEVER draw all seven curves
  * against the size of N. That picture is the exact misconception the lab is
- * here to remove — rho and ECM do not care how big N is, and Fermat cares
- * about |p - q| and nothing else. So each method gets its own axis, labelled
- * with its own driver, and only the three methods that genuinely depend on N
- * share the last chart.
+ * here to remove — rho's iteration count and ECM's expected curve count are
+ * governed chiefly by the smallest factor, while Fermat's step count is
+ * governed chiefly by |p - q|. The full modulus still affects the cost of each
+ * modular operation. Each chart therefore uses the method's primary count
+ * driver, and the three methods normally compared directly against N share the
+ * last chart.
  */
 
 import { ALGORITHMS, type AlgorithmId } from '../factor/types';
@@ -139,7 +141,7 @@ const MODELS: Record<AlgorithmId, LadderModel> = {
       const u = (bits * Math.LN2) / Math.log(20_000);
       return Math.max(1, u ** u);
     },
-    note: 'Each curve is one draw for a smooth group order, so the cost is a COUNT OF CURVES. The curve here is 1/ρ(u) with Dickman’s ρ crudely approximated by u^−u at B1 = 20,000 — an order-of-magnitude guide, not a prediction.',
+    note: 'Each curve is one draw for a smooth group order, so this chart models the expected COUNT OF CURVES from the smallest factor. The curve is 1/ρ(u), with Dickman’s ρ crudely approximated by u^−u at B1 = 20,000. Arithmetic modulo the full N still sets the cost of each curve, so this is an order-of-magnitude guide, not a wall-clock prediction.',
     measure: (rec) => point(metric(rec, 'factor bits'), metric(rec, 'curves tried')),
   },
   qs: {
@@ -188,7 +190,7 @@ export function mountLadderPanel(root: HTMLElement): () => void {
         el('h2', { text: 'Every method on the axis it actually depends on' }),
         el('p', {
           text:
-            'Plotting every factoring algorithm against "the size of N" is the single most misleading picture in this subject. Only three of the methods here depend on N at all. The rest are driven by a property of p — and each chart below is labelled with the one it is actually driven by.',
+            'Plotting every factoring algorithm only against "the size of N" hides the dominant count driver for factor-sensitive methods. Rho iterations and ECM curve count are governed chiefly by the smallest factor, while arithmetic on each iteration or curve still costs more for a larger N. Each chart below names the quantity its operation count is modeled against.',
         }),
         el('p', {
           class: 'small muted',
@@ -240,7 +242,7 @@ export function mountLadderPanel(root: HTMLElement): () => void {
     }
     root.append(grid);
 
-    // ── The methods that really do scale with N, plus Shor ────────────────
+    // ── The methods conventionally compared directly against N ──────────
     const nCard = el('div', { class: 'card' });
     nCard.append(el('h2', { text: 'The only fair "against N" chart' }));
     const bitsAxis = range(64, 2048, 64);
@@ -273,7 +275,7 @@ export function mountLadderPanel(root: HTMLElement): () => void {
       el('p', {
         class: 'small',
         id: 'against-n-count',
-        text: `These ${names.length} are the methods whose cost genuinely is a function of the size of N and nothing else: ${names.join(', ')}. Note the axis: bits of N, running well past anything this page can factor, because the interesting part of the comparison only starts there.`,
+        text: `These ${names.length} are the methods whose primary asymptotic comparison is conventionally plotted against the size of N: ${names.join(', ')}. Note the axis: bits of N, running well past anything this page can factor, because the interesting part of the comparison only starts there.`,
       })
     );
     nCard.append(
@@ -321,7 +323,7 @@ export function mountLadderPanel(root: HTMLElement): () => void {
         { class: 'note' },
         el('strong', { text: 'Read the axes before the curves. ' }),
         document.createTextNode(
-          'A chart with all seven methods on one "bits of N" axis would put rho and ECM on a curve that has nothing to do with what they do. That picture is common and it is wrong.'
+          'A single "bits of N" chart would hide the dominant driver of rho iterations and ECM curve count. N still affects the cost of each modular operation; the separate axes show which quantity governs the count being plotted.'
         )
       )
     );
