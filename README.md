@@ -118,10 +118,8 @@ limitation is visible in that state.
    for Fermat; the curve counter, sigma, and the non-invertible denominator for ECM; the factor
    base, the smooth relations, the GF(2) matrix and the dependency for the sieve.
 6. **The Ladder** — seven charts, each labelled with what that method actually depends on, across
-   **five distinct axes**: trial division, Pollard rho and ECM genuinely share one, because all
-   three are driven by the size of the *smallest factor* and nothing else. Your own measured runs
-   are plotted on the same axes, in the same units as the model. A separate chart carries the only
-   three whose cost really is a function of `N` — the quadratic sieve, the number field sieve, and
+   **five distinct axes**: trial division, Pollard rho and ECM share a chart indexed by the size of the *smallest factor*. The number of operations and the cost of an individual operation describe different things. In particular, arithmetic modulo a larger N costs more per ECM curve. Your own measured runs
+   are plotted on the same axes, in the same units as the model. A separate chart indexes three methods by the size of `N` — the quadratic sieve, the number field sieve, and
    Shor.
 7. **Shor & the RSA Rules** — which rule defends against which method, and the row where every
    answer is "No".
@@ -136,8 +134,7 @@ limitation is visible in that state.
 
 - **Do** use it to understand why RSA key generation says what it says, and why "just use a bigger
   key" is a real answer to the sieve and not to Shor.
-- **Do** use it to see that ECM's cost tracks the *smallest factor* and not the size of `N` — the
-  single most useful fact about factoring in practice.
+- **Do** use it to see that ECM’s expected curve count depends chiefly on the smallest factor. Elapsed time also depends on the size of the modulus used in each curve computation.
 - **Do NOT** use any of this code for cryptographic work. It is written to be read, not to be fast
   or constant-time, and the primality test is probabilistic by design.
 - **Do NOT** read a timing here as evidence about a real key. Nothing on this page is extrapolated.
@@ -182,7 +179,7 @@ limitation is visible in that state.
   Table A.1) keeps the auxiliary-prime construction as one of two permitted methods for every
   modulus of 2048 bits or more, and requires it for none.
 - **Fermat** is why "generate `q` near `p`" is a documented implementation bug rather than an
-  optimisation — it has broken real keys, including a 2022 batch of hardware-generated RSA keys.
+  optimisation — Hanno Böck documented affected Canon and Fuji Xerox printer keys observed before the 2022 public disclosures. [Fermat Factorization in the Wild](https://eprint.iacr.org/2023/026).
 - **The quadratic sieve** factored RSA-129 in 1994; the **number field sieve** has held the records
   since, and its `L_N[1/3, 1.923]` cost is what current RSA key-size recommendations are derived
   from.
